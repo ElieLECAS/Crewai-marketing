@@ -1,0 +1,27 @@
+crewai>=0.80.0
+python-dotenv>=1.0.1
+pydantic>=2.8.2
+rich>=13.8.1
+
+# Backends LLM compatibles OpenAI
+openai>=1.45.0
+httpx>=0.27.2
+
+# UI
+streamlit>=1.38.0
+
+# Tools
+crewai-tools>=0.8.0
+google-search-results>=2.4.2
+requests>=2.31.0
+beautifulsoup4>=4.12.0
+
+# PDF and RAG (CrewAI tools handle this)
+# PyPDF2>=3.0.1
+# langchain>=0.1.0
+# langchain-community>=0.0.20
+# faiss-cpu>=1.7.4
+# sentence-transformers>=2.2.2
+
+# Social media specific
+pillow>=10.0.0

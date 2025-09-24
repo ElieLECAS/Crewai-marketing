@@ -1,0 +1,16 @@
+version: "3.9"
+services:
+    app:
+        build: .
+        env_file:
+            - .env
+        environment:
+            - OPENAI_API_KEY=${OPENAI_API_KEY}
+            - OPENAI_MODEL=${OPENAI_MODEL:-gpt-4o-mini}
+            - SERPER_API_KEY=${SERPER_API_KEY}
+        ports:
+            - "8501:8501"
+        volumes:
+            - ./knowledge:/app/knowledge
+        command: streamlit run streamlit_app.py --server.port 8501 --server.address 0.0.0.0
+        tty: true
