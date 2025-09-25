@@ -1,6 +1,6 @@
 from crewai import Crew, Process
-from .agents import create_all_agents
-from .sequential_tasks import create_sequential_tasks_from_problem
+from .agents import create_all_agents, create_agent_from_config
+from .sequential_tasks import create_sequential_tasks_from_problem, SequentialTaskManager
 from .agent_config import AgentConfigManager
 from typing import List, Optional
 
@@ -32,6 +32,70 @@ def build_dynamic_marketing_crew(problem_statement: str, company_context: str = 
         tasks=tasks,
         process=Process.sequential,
         verbose=True,
-        # Supprimer les paramètres memory et planning pour éviter les erreurs d'événements
+    )
+
+def build_two_phase_marketing_crew(problem_statement: str, company_context: str = "", config_manager: AgentConfigManager = None, pdf_paths: List[str] = None, selected_agents: List[str] = None):
+    """Construit une équipe marketing en deux phases : Meta Manager puis agents dans l'ordre recommandé"""
+    if config_manager is None:
+        config_manager = AgentConfigManager()
+    
+    # Utiliser les agents par défaut si aucun n'est fourni
+    if selected_agents is None:
+        selected_agents = ["meta_manager_agent", "clara_detective_digitale", "julien_analyste_strategique", "sophie_plume_solidaire"]
+    
+    # Phase 1: Créer et exécuter le Meta Manager seul
+    meta_agent = create_agent_from_config("meta_manager_agent", config_manager, pdf_paths)
+    task_manager = SequentialTaskManager(config_manager)
+    
+    # Agents disponibles pour le Meta Manager (sans lui-même)
+    available_agents = [agent for agent in selected_agents if agent != "meta_manager_agent"]
+    
+    # Créer la tâche du Meta Manager
+    meta_task = task_manager.create_meta_manager_task(problem_statement, company_context, available_agents)
+    
+    # Créer un crew temporaire pour le Meta Manager
+    meta_crew = Crew(
+        agents=[meta_agent],
+        tasks=[meta_task],
+        process=Process.sequential,
+        verbose=True,
+    )
+    
+    return meta_crew, task_manager, available_agents
+
+def build_ordered_crew_from_meta_result(meta_result: str, problem_statement: str, company_context: str = "", config_manager: AgentConfigManager = None, pdf_paths: List[str] = None, available_agents: List[str] = None):
+    """Crée un crew avec les agents dans l'ordre recommandé par le Meta Manager"""
+    if config_manager is None:
+        config_manager = AgentConfigManager()
+    
+    if available_agents is None:
+        available_agents = ["clara_detective_digitale", "julien_analyste_strategique", "sophie_plume_solidaire"]
+    
+    # Créer le gestionnaire de tâches et obtenir l'ordre recommandé
+    task_manager = SequentialTaskManager(config_manager)
+    ordered_agents = task_manager.parse_recommended_order(meta_result, available_agents)
+    
+    # Créer les agents dans l'ordre recommandé
+    agents = []
+    for agent_name in ordered_agents:
+        try:
+            agent = create_agent_from_config(agent_name, config_manager, pdf_paths)
+            agents.append(agent)
+        except Exception as e:
+            print(f"⚠️ Erreur lors de la création de l'agent {agent_name}: {e}")
+    
+    # Créer les tâches dans l'ordre recommandé avec le contexte du Meta Manager
+    tasks = task_manager.create_ordered_sequential_tasks(
+        problem_statement, 
+        company_context, 
+        ordered_agents, 
+        meta_result
+    )
+    
+    return Crew(
+        agents=agents,
+        tasks=tasks,
+        process=Process.sequential,
+        verbose=True,
     )
 

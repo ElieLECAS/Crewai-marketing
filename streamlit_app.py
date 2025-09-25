@@ -3,7 +3,7 @@ import streamlit as st
 import json
 from dotenv import load_dotenv
 from rich.console import Console
-from src.crew import build_dynamic_marketing_crew
+from src.crew import build_dynamic_marketing_crew, build_two_phase_marketing_crew, build_ordered_crew_from_meta_result
 from src.agent_config import AgentConfigManager
 from src.crew_config import CrewConfigManager
 from src.tools import get_available_tools
@@ -509,10 +509,10 @@ with tab1:
             if model:
                 os.environ["OPENAI_MODEL"] = model
             
-            with st.spinner(f"🤖 Le Meta Manager analyse votre problématique et coordonne l'équipe '{selected_crew.name}'..."):
+            with st.spinner(f"🤖 Phase 1 : Le Meta Manager analyse votre problématique..."):
                 try:
-                    # Construire le crew avec le système de tâches automatiques
-                    crew = build_dynamic_marketing_crew(
+                    # Phase 1: Créer et exécuter le Meta Manager seul
+                    meta_crew, task_manager, available_agents = build_two_phase_marketing_crew(
                         problem_statement=problem_statement,
                         company_context=company_context,
                         config_manager=st.session_state.config_manager,
@@ -520,8 +520,33 @@ with tab1:
                         selected_agents=selected_crew.selected_agents
                     )
                     
-                    # Lancer l'équipe
-                    result = crew.kickoff()
+                    # Exécuter le Meta Manager
+                    st.info("🧠 Le Meta Manager analyse la problématique et définit l'ordre d'exécution optimal...")
+                    meta_result = meta_crew.kickoff()
+                    
+                    # Afficher le plan du Meta Manager
+                    st.success("✅ Phase 1 terminée : Plan d'exécution créé par le Meta Manager")
+                    with st.expander("📋 Voir le plan du Meta Manager", expanded=True):
+                        st.markdown(str(meta_result))
+                    
+                    # Phase 2: Créer et exécuter les agents dans l'ordre recommandé
+                    st.info("🚀 Phase 2 : Exécution des agents dans l'ordre recommandé...")
+                    
+                    ordered_crew = build_ordered_crew_from_meta_result(
+                        meta_result=str(meta_result),
+                        problem_statement=problem_statement,
+                        company_context=company_context,
+                        config_manager=st.session_state.config_manager,
+                        pdf_paths=pdf_paths,
+                        available_agents=available_agents
+                    )
+                    
+                    # Exécuter les agents dans l'ordre recommandé
+                    agents_result = ordered_crew.kickoff()
+                    
+                    # Combiner les résultats
+                    result = f"{meta_result}\n\n---\n\nRÉSULTATS DES AGENTS:\n\n{agents_result}"
+                    
                 except Exception as e:
                     st.error(f"❌ Erreur lors de l'exécution du crew : {str(e)}")
                     st.error("💡 Vérifiez vos clés API et la configuration des agents")
@@ -902,18 +927,39 @@ with tab4:
     # Stocker les PDFs dans la session state
     if 'uploaded_pdfs' not in st.session_state:
         st.session_state.uploaded_pdfs = []
+        
+        # Synchroniser avec les PDFs existants dans le dossier knowledge
+        knowledge_dir = "knowledge"
+        if os.path.exists(knowledge_dir):
+            existing_pdfs = []
+            for file in os.listdir(knowledge_dir):
+                if file.lower().endswith('.pdf'):
+                    existing_pdfs.append(os.path.join(knowledge_dir, file))
+            if existing_pdfs:
+                st.session_state.uploaded_pdfs = existing_pdfs
+                st.info(f"🔄 {len(existing_pdfs)} PDF(s) existant(s) détecté(s) dans le dossier knowledge/")
     
     if uploaded_files:
-        # Sauvegarder les fichiers temporairement
-        import tempfile
+        # Sauvegarder les fichiers directement dans le dossier knowledge
         import os
+        import shutil
+        
+        # Créer le dossier knowledge s'il n'existe pas
+        knowledge_dir = "knowledge"
+        os.makedirs(knowledge_dir, exist_ok=True)
         
         pdf_paths = []
         for uploaded_file in uploaded_files:
-            # Créer un fichier temporaire
-            with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as tmp_file:
-                tmp_file.write(uploaded_file.getvalue())
-                pdf_paths.append(tmp_file.name)
+            # Sauvegarder directement dans le dossier knowledge avec le nom original
+            knowledge_file_path = os.path.join(knowledge_dir, uploaded_file.name)
+            try:
+                # Écrire le contenu du fichier uploadé directement dans knowledge/
+                with open(knowledge_file_path, 'wb') as f:
+                    f.write(uploaded_file.getvalue())
+                pdf_paths.append(knowledge_file_path)
+                print(f"📁 PDF sauvegardé dans knowledge/: {uploaded_file.name}")
+            except Exception as e:
+                print(f"⚠️ Erreur lors de la sauvegarde dans knowledge/: {e}")
         
         st.session_state.uploaded_pdfs = pdf_paths
         
@@ -929,29 +975,53 @@ with tab4:
         for i, path in enumerate(pdf_paths):
             st.code(f"Fichier {i+1}: {path}")
     
-    # Bouton pour vider les PDFs
-    if st.session_state.uploaded_pdfs:
-        if st.button("🗑️ Vider tous les PDFs"):
-            # Supprimer les fichiers temporaires
-            for pdf_path in st.session_state.uploaded_pdfs:
-                try:
-                    os.unlink(pdf_path)
-                except:
-                    pass
-            
-            # Supprimer aussi les PDFs du dossier knowledge
+    # Boutons de test et gestion
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        if st.button("🔄 Actualiser la détection"):
+            # Re-scanner le dossier knowledge
             knowledge_dir = "knowledge"
             if os.path.exists(knowledge_dir):
-                import shutil
-                try:
-                    shutil.rmtree(knowledge_dir)
-                    st.write("📁 Dossier knowledge supprimé")
-                except:
-                    pass
-            
-            st.session_state.uploaded_pdfs = []
-            st.success("Tous les PDFs ont été supprimés!")
+                existing_pdfs = []
+                for file in os.listdir(knowledge_dir):
+                    if file.lower().endswith('.pdf'):
+                        existing_pdfs.append(os.path.join(knowledge_dir, file))
+                st.session_state.uploaded_pdfs = existing_pdfs
+                st.success(f"🔄 {len(existing_pdfs)} PDF(s) détecté(s)")
+            else:
+                st.session_state.uploaded_pdfs = []
+                st.info("📁 Dossier knowledge vide ou inexistant")
             st.rerun()
+    
+    with col2:
+        if st.button("🧪 Test détection PDFs"):
+            from src.tools import get_available_pdfs
+            pdfs = get_available_pdfs()
+            if pdfs:
+                st.success(f"✅ {len(pdfs)} PDF(s) détecté(s) par les outils:")
+                for pdf in pdfs:
+                    st.write(f"   - {os.path.basename(pdf)}")
+            else:
+                st.warning("⚠️ Aucun PDF détecté par les outils")
+    
+    with col3:
+        if st.session_state.uploaded_pdfs:
+            if st.button("🗑️ Vider tous les PDFs"):
+                # Supprimer les fichiers du dossier knowledge
+                knowledge_dir = "knowledge"
+                if os.path.exists(knowledge_dir):
+                    import shutil
+                    try:
+                        shutil.rmtree(knowledge_dir)
+                        os.makedirs(knowledge_dir, exist_ok=True)  # Recréer le dossier vide
+                        st.write("📁 Dossier knowledge vidé")
+                    except Exception as e:
+                        st.error(f"Erreur lors de la suppression: {e}")
+                
+                st.session_state.uploaded_pdfs = []
+                st.success("Tous les PDFs ont été supprimés!")
+                st.rerun()
     
     st.info("""
     **Comment ça fonctionne :**
@@ -964,16 +1034,28 @@ with tab4:
     Les agents utiliseront automatiquement ces PDFs lors de l'exécution de leurs tâches.
     """)
     
-    # Afficher le contenu du dossier knowledge
+    # Afficher le contenu du dossier knowledge avec debug
     knowledge_dir = "knowledge"
+    st.write("**📁 État du dossier knowledge :**")
+    
+    # Debug: Afficher le chemin absolu
+    abs_knowledge_dir = os.path.abspath(knowledge_dir)
+    st.write(f"**Chemin absolu :** `{abs_knowledge_dir}`")
+    
     if os.path.exists(knowledge_dir):
-        st.write("**📁 Contenu du dossier knowledge :**")
+        st.write("✅ Le dossier knowledge existe")
         knowledge_files = os.listdir(knowledge_dir)
         if knowledge_files:
+            st.write(f"📄 {len(knowledge_files)} fichier(s) trouvé(s) :")
             for file in knowledge_files:
-                st.write(f"📄 {file}")
+                file_path = os.path.join(knowledge_dir, file)
+                file_size = os.path.getsize(file_path) if os.path.exists(file_path) else 0
+                st.write(f"   - {file} ({file_size} bytes)")
         else:
-            st.write("Aucun fichier dans le dossier knowledge")
+            st.write("⚠️ Le dossier knowledge est vide")
+    else:
+        st.write("❌ Le dossier knowledge n'existe pas")
+        st.write("💡 Il sera créé automatiquement lors du prochain upload de PDF")
 
 with tab5:
     st.title("🔧 Outils et Configuration Avancée")
