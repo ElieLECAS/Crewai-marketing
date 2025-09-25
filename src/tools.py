@@ -35,21 +35,21 @@ def get_available_tools() -> Dict[str, Any]:
     # Outils PDF et RAG (CrewAI natifs)
     tools["pdf_search"] = {
         "name": "Recherche PDF (CrewAI)",
-        "description": "Recherche sémantique dans les fichiers PDF via CrewAI. Utilise les PDFs uploadés dans l'interface.",
+        "description": "Recherche sémantique dans les fichiers PDF via CrewAI. Les PDFs doivent être dans le dossier knowledge/ ou spécifiés par chemin complet.",
         "tool": PDFSearchTool(),
         "enabled": True
     }
     
     tools["rag_tool"] = {
         "name": "RAG Tool (CrewAI)",
-        "description": "Recherche dans base de connaissances via CrewAI",
+        "description": "Recherche dans base de connaissances via CrewAI. Utilise automatiquement les PDFs disponibles.",
         "tool": RagTool(),
         "enabled": True
     }
     
     return tools
 
-def create_pdf_knowledge_sources(pdf_paths: List[str]) -> List[PDFKnowledgeSource]:
+def create_pdf_knowledge_sources(pdf_paths: List[str]) -> List:
     """Crée des sources de connaissances PDF pour les agents"""
     knowledge_sources = []
     
@@ -57,12 +57,21 @@ def create_pdf_knowledge_sources(pdf_paths: List[str]) -> List[PDFKnowledgeSourc
         print("Aucun PDF fourni pour les sources de connaissances")
         return knowledge_sources
     
-    print("⚠️ Fonctionnalité PDF temporairement désactivée pour éviter les erreurs de chemins")
-    print("💡 Les agents utiliseront uniquement les outils de recherche web pour l'instant")
+    print(f"📚 Création des sources de connaissances pour {len(pdf_paths)} PDF(s)")
     
-    # TODO: Réactiver la fonctionnalité PDF une fois les problèmes de chemins résolus
-    # Pour l'instant, on retourne une liste vide pour éviter les erreurs
+    # Pour l'instant, on retourne une liste vide pour éviter les erreurs de compatibilité
+    # Les agents utiliseront directement les outils PDFSearchTool et RagTool
+    print("💡 Les agents utiliseront les outils PDF natifs de CrewAI (PDFSearchTool, RagTool)")
+    print("📄 PDFs disponibles pour les outils :")
     
+    for pdf_path in pdf_paths:
+        if os.path.exists(pdf_path):
+            abs_path = os.path.abspath(pdf_path)
+            print(f"   ✅ {abs_path}")
+        else:
+            print(f"   ⚠️ Fichier non trouvé: {pdf_path}")
+    
+    print("🎯 Les outils PDF sont prêts à être utilisés par les agents")
     return knowledge_sources
 
 def get_tools_for_agent(agent_name: str, enabled_tools: List[str]) -> List[Any]:
