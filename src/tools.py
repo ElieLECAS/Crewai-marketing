@@ -262,8 +262,8 @@ def get_tools_for_agent(agent_name: str, enabled_tools: List[str]) -> List[Any]:
 
 # Configuration par défaut des outils par agent
 DEFAULT_AGENT_TOOLS = {
-    "manager_agent": ["serper_search", "rag_tool"],
-    "web_research_agent": ["serper_search", "website_search", "scrape_website"],
-    "pdf_analysis_agent": ["pdf_search", "rag_tool"],
-    "content_writer_agent": ["serper_search", "rag_tool"]
+    "meta_manager_agent": ["serper_search", "rag_tool"],
+    "clara_detective_digitale": ["serper_search", "website_search", "scrape_website"],
+    "julien_analyste_strategique": ["pdf_search", "rag_tool"],
+    "sophie_plume_solidaire": ["serper_search", "rag_tool"]
 }
