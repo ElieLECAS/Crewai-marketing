@@ -21,132 +21,74 @@ def get_available_pdfs() -> List[str]:
     return pdf_files
 
 
-class CustomPDFSearchTool:
-    """Outil PDF personnalisé qui gère correctement les paramètres"""
+def create_pdf_search_tools(pdf_files: List[str]) -> List[PDFSearchTool]:
+    """Crée une liste d'outils PDFSearchTool pour chaque fichier PDF"""
+    tools = []
     
-    def __init__(self, pdf_files: List[str]):
-        self.pdf_files = pdf_files
-        self.tools = []
-        
-        # Créer un outil PDFSearchTool pour chaque fichier
-        for pdf_path in pdf_files:
-            try:
-                tool = PDFSearchTool(pdf=pdf_path)
-                self.tools.append(tool)
-                print(f"✅ Outil PDF créé pour: {os.path.basename(pdf_path)}")
-            except Exception as e:
-                print(f"❌ Erreur création outil pour {os.path.basename(pdf_path)}: {e}")
+    for pdf_path in pdf_files:
+        try:
+            tool = PDFSearchTool(pdf=pdf_path)
+            tools.append(tool)
+            print(f"✅ Outil PDF créé pour: {os.path.basename(pdf_path)}")
+        except Exception as e:
+            print(f"❌ Erreur création outil pour {os.path.basename(pdf_path)}: {e}")
     
-    def run(self, query: str = None, **kwargs) -> str:
-        """Exécute la recherche dans tous les PDFs disponibles"""
-        if not self.tools:
-            return "Aucun outil PDF disponible"
-        
-        if not query:
-            query = kwargs.get('description', '')
-        
-        if not query:
-            return "Aucune requête fournie pour la recherche PDF"
-        
-        results = []
-        for i, tool in enumerate(self.tools):
-            try:
-                pdf_name = os.path.basename(self.pdf_files[i])
-                result = tool.run(query=query)
-                if result and result.strip():
-                    results.append(f"=== Résultats de {pdf_name} ===\n{result}\n")
-            except Exception as e:
-                print(f"❌ Erreur recherche dans {os.path.basename(self.pdf_files[i])}: {e}")
-                results.append(f"=== Erreur dans {os.path.basename(self.pdf_files[i])} ===\nErreur: {str(e)}\n")
-        
-        if results:
-            return "\n".join(results)
-        else:
-            return "Aucun résultat trouvé dans les PDFs"
+    return tools
 
-def create_smart_pdf_tool():
-    """Crée un outil PDF intelligent qui utilise automatiquement les PDFs disponibles"""
+def create_smart_pdf_tools():
+    """Crée des outils PDF intelligents qui utilisent automatiquement les PDFs disponibles"""
     pdf_files = get_available_pdfs()
     
     if pdf_files:
         # Affichage debug des chemins PDF
-        print(f"🔍 Création de l'outil PDF avec {len(pdf_files)} fichier(s):")
+        print(f"🔍 Création des outils PDF avec {len(pdf_files)} fichier(s):")
         for pdf_path in pdf_files:
             print(f"   📄 Chemin PDF: {pdf_path}")
             print(f"   📄 Fichier existe: {os.path.exists(pdf_path)}")
         
-        # Créer l'outil personnalisé
-        custom_tool = CustomPDFSearchTool(pdf_files)
-        print("✅ Outil PDF personnalisé créé avec succès")
-        return custom_tool
+        # Créer les outils PDF pour chaque fichier
+        tools = create_pdf_search_tools(pdf_files)
+        print(f"✅ {len(tools)} outil(s) PDF créé(s) avec succès")
+        return tools
     else:
-        # Retourner None si aucun PDF n'est disponible
-        print("⚠️ Aucun PDF disponible pour créer l'outil PDFSearchTool")
-        return None
+        # Retourner une liste vide si aucun PDF n'est disponible
+        print("⚠️ Aucun PDF disponible pour créer les outils PDFSearchTool")
+        return []
 
 
-class CustomRAGTool:
-    """Outil RAG personnalisé qui gère correctement les paramètres"""
+def create_rag_tools(pdf_files: List[str]) -> List[RagTool]:
+    """Crée une liste d'outils RagTool pour chaque fichier PDF"""
+    tools = []
     
-    def __init__(self, pdf_files: List[str]):
-        self.pdf_files = pdf_files
-        self.tools = []
-        
-        # Créer un outil RagTool pour chaque fichier
-        for pdf_path in pdf_files:
-            try:
-                tool = RagTool(pdf=pdf_path)
-                self.tools.append(tool)
-                print(f"✅ Outil RAG créé pour: {os.path.basename(pdf_path)}")
-            except Exception as e:
-                print(f"❌ Erreur création RAG pour {os.path.basename(pdf_path)}: {e}")
+    for pdf_path in pdf_files:
+        try:
+            tool = RagTool(pdf=pdf_path)
+            tools.append(tool)
+            print(f"✅ Outil RAG créé pour: {os.path.basename(pdf_path)}")
+        except Exception as e:
+            print(f"❌ Erreur création RAG pour {os.path.basename(pdf_path)}: {e}")
     
-    def run(self, query: str = None, **kwargs) -> str:
-        """Exécute la recherche RAG dans tous les PDFs disponibles"""
-        if not self.tools:
-            return "Aucun outil RAG disponible"
-        
-        if not query:
-            query = kwargs.get('description', '')
-        
-        if not query:
-            return "Aucune requête fournie pour la recherche RAG"
-        
-        results = []
-        for i, tool in enumerate(self.tools):
-            try:
-                pdf_name = os.path.basename(self.pdf_files[i])
-                result = tool.run(query=query)
-                if result and result.strip():
-                    results.append(f"=== Résultats RAG de {pdf_name} ===\n{result}\n")
-            except Exception as e:
-                print(f"❌ Erreur RAG dans {os.path.basename(self.pdf_files[i])}: {e}")
-                results.append(f"=== Erreur RAG dans {os.path.basename(self.pdf_files[i])} ===\nErreur: {str(e)}\n")
-        
-        if results:
-            return "\n".join(results)
-        else:
-            return "Aucun résultat RAG trouvé dans les PDFs"
+    return tools
 
-def create_smart_rag_tool():
-    """Crée un outil RAG intelligent qui utilise automatiquement les PDFs disponibles"""
+def create_smart_rag_tools():
+    """Crée des outils RAG intelligents qui utilisent automatiquement les PDFs disponibles"""
     pdf_files = get_available_pdfs()
     
     if pdf_files:
         # Affichage debug des chemins PDF
-        print(f"🔍 Création de l'outil RAG avec {len(pdf_files)} fichier(s):")
+        print(f"🔍 Création des outils RAG avec {len(pdf_files)} fichier(s):")
         for pdf_path in pdf_files:
             print(f"   📄 Chemin PDF: {pdf_path}")
             print(f"   📄 Fichier existe: {os.path.exists(pdf_path)}")
         
-        # Créer l'outil personnalisé
-        custom_tool = CustomRAGTool(pdf_files)
-        print("✅ Outil RAG personnalisé créé avec succès")
-        return custom_tool
+        # Créer les outils RAG pour chaque fichier
+        tools = create_rag_tools(pdf_files)
+        print(f"✅ {len(tools)} outil(s) RAG créé(s) avec succès")
+        return tools
     else:
-        # Retourner None si aucun PDF n'est disponible
-        print("⚠️ Aucun PDF disponible pour créer l'outil RagTool")
-        return None
+        # Retourner une liste vide si aucun PDF n'est disponible
+        print("⚠️ Aucun PDF disponible pour créer les outils RagTool")
+        return []
 
 def get_available_tools() -> Dict[str, Any]:
     """Retourne la liste des outils disponibles avec leurs configurations"""
@@ -180,17 +122,20 @@ def get_available_tools() -> Dict[str, Any]:
     # Outils PDF intelligents - détectent automatiquement les PDFs disponibles
     pdf_files = get_available_pdfs()
     if pdf_files:
+        pdf_tools = create_smart_pdf_tools()
+        rag_tools = create_smart_rag_tools()
+        
         tools["pdf_search"] = {
             "name": "Recherche PDF (CrewAI)",
             "description": f"Recherche sémantique dans {len(pdf_files)} fichier(s) PDF disponible(s) dans le dossier knowledge/",
-            "tool": create_smart_pdf_tool(),
+            "tools": pdf_tools,
             "enabled": True
         }
         
         tools["rag_tool"] = {
             "name": "RAG Tool (CrewAI)",
             "description": f"Recherche dans base de connaissances via CrewAI. Utilise automatiquement {len(pdf_files)} fichier(s) PDF disponible(s).",
-            "tool": create_smart_rag_tool(),
+            "tools": rag_tools,
             "enabled": True
         }
     else:
@@ -198,14 +143,14 @@ def get_available_tools() -> Dict[str, Any]:
         tools["pdf_search"] = {
             "name": "Recherche PDF (CrewAI)",
             "description": "Recherche sémantique dans les fichiers PDF via CrewAI. Aucun PDF disponible actuellement.",
-            "tool": None,
+            "tools": [],
             "enabled": False
         }
         
         tools["rag_tool"] = {
             "name": "RAG Tool (CrewAI)",
             "description": "Recherche dans base de connaissances via CrewAI. Aucun PDF disponible actuellement.",
-            "tool": None,
+            "tools": [],
             "enabled": False
         }
     
@@ -294,13 +239,14 @@ def get_tools_for_agent(agent_name: str, enabled_tools: List[str]) -> List[Any]:
     
     for tool_name in enabled_tools:
         if tool_name in available_tools and available_tools[tool_name]["enabled"]:
-            tool = available_tools[tool_name]["tool"]
+            tool_config = available_tools[tool_name]
             
             # Gestion intelligente des outils PDF
             if tool_name in ["pdf_search", "rag_tool"]:
-                if has_pdfs and tool is not None:
-                    agent_tools.append(tool)
-                    print(f"✅ Agent {agent_name}: Outil {tool_name} activé avec {len(pdf_files)} PDF(s)")
+                tools_list = tool_config.get("tools", [])
+                if has_pdfs and tools_list:
+                    agent_tools.extend(tools_list)
+                    print(f"✅ Agent {agent_name}: {len(tools_list)} outil(s) {tool_name} activé(s) avec {len(pdf_files)} PDF(s)")
                     # Affichage debug des chemins PDF utilisés
                     for pdf_path in pdf_files:
                         print(f"   📄 PDF: {pdf_path}")
@@ -308,6 +254,7 @@ def get_tools_for_agent(agent_name: str, enabled_tools: List[str]) -> List[Any]:
                     print(f"⚠️ Agent {agent_name}: Outil {tool_name} désactivé (aucun PDF disponible)")
             else:
                 # Pour les autres outils, ajouter normalement
+                tool = tool_config.get("tool")
                 if tool is not None:
                     agent_tools.append(tool)
     
