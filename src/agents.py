@@ -25,7 +25,8 @@ def create_agent_from_config(agent_name: str, config_manager: AgentConfigManager
         tools=tools,
         knowledge_sources=knowledge_sources,
         max_iter=config.max_iter,
-        # Supprimer memory et allow_delegation pour éviter les erreurs d'événements
+        memory=config.memory,
+        allow_delegation=config.allow_delegation,
     )
 
 def create_all_agents(config_manager: AgentConfigManager, pdf_paths: List[str] = None) -> dict:

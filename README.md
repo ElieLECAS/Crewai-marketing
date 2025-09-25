@@ -1,27 +1,187 @@
-# CrewAI Marketing Crew
+# 🚀 CrewAI Marketing - Interface Avancée
 
-Ce projet met en place une équipe marketing basée sur CrewAI avec un agent Manager (meta-agent) qui collecte la demande et répartit les tâches à des sous-agents spécialisés (SEO, Contenu, Réseaux sociaux, Emailing, Analytics). L'application est exécutable en local (CLI et Streamlit) ou via Docker et docker-compose.
+## Description
 
-## Prérequis
+Application CrewAI pour la génération de contenu marketing dynamique avec une interface de configuration flexible et intuitive. Créez une infinité d'agents, organisez-les en crews personnalisés, et définissez des tâches séquentielles selon vos besoins.
 
--   Python 3.10+
--   Compte OpenAI (ou fournisseur compatible OpenAI)
--   Clé API `OPENAI_API_KEY`
+## ✨ Nouvelles Fonctionnalités
 
-## Option A — Interface Streamlit (recommandé)
+### 🤖 Gestion des Agents
 
-### Local
+-   **Création illimitée d'agents** avec le bouton "➕ Créer un nouvel agent"
+-   **Configuration complète** : nom, rôle, objectif, backstory, outils, paramètres
+-   **Interface intuitive** pour gérer tous vos agents
+-   **Suppression et modification** des agents existants
+
+### 👥 Gestion des Crews
+
+-   **Crews personnalisés** : sélectionnez les agents de votre choix
+-   **Configuration flexible** : nom, description, agents sélectionnés
+-   **Gestion complète** : création, modification, suppression
+
+### 🤖 Meta Manager Automatique
+
+-   **Analyse automatique** de votre problématique marketing
+-   **Création dynamique** des tâches selon le contexte
+-   **Répartition intelligente** des tâches aux agents appropriés
+-   **Exécution séquentielle** optimisée
+
+### 🎯 Campagne Marketing
+
+-   **Sélection du crew** à utiliser pour la campagne
+-   **Interface simplifiée** : problématique + contexte entreprise
+-   **Exécution personnalisée** selon la configuration du crew
+
+### 💾 Sauvegarde et Chargement
+
+-   **Export/Import** de configurations complètes
+-   **Sauvegarde** de vos agents, crews et tâches
+-   **Partage** de configurations entre équipes
+
+## 🚀 Démarrage Rapide
+
+### Démarrage
 
 ```bash
-python -m venv .venv
-. .venv/Scripts/Activate.ps1  # Windows PowerShell
+# Installation des dépendances
 pip install -r requirements.txt
+
+# Démarrage de l'application
 streamlit run streamlit_app.py
 ```
 
-Ensuite, ouvre l’URL affichée (par défaut `http://localhost:8501`) et saisis tes exigences + checklist.
+## ⚙️ Configuration
 
-### Docker
+### Fichier .env
+
+Créez un fichier `.env` avec vos clés API :
+
+```env
+OPENAI_API_KEY=sk-...
+SERPER_API_KEY=...
+OPENAI_MODEL=gpt-4o-mini
+CREWAI_TELEMETRY=False
+```
+
+### Configuration par défaut
+
+L'application démarre avec 4 agents pré-configurés :
+
+-   Meta Manager (analyse et délégation)
+-   Clara (recherche web et veille)
+-   Julien (analyse stratégique)
+-   Sophie (rédaction de contenu)
+
+## 📖 Guide d'utilisation
+
+### 1. Créer vos agents
+
+1. Allez dans l'onglet "🤖 Gestion Agents"
+2. Cliquez sur "➕ Créer un nouvel agent"
+3. Remplissez les informations (nom, rôle, objectif, backstory, outils)
+4. Sauvegardez l'agent
+
+### 2. Créer vos crews
+
+1. Allez dans l'onglet "👥 Gestion Crews"
+2. Cliquez sur "➕ Créer un nouveau crew"
+3. Sélectionnez les agents à inclure
+4. Définissez le nom et la description du crew
+
+### 3. Lancer une campagne
+
+1. Allez dans l'onglet "🎯 Campagne"
+2. Sélectionnez le crew à utiliser
+3. Décrivez votre problématique marketing
+4. Ajoutez le contexte de votre entreprise
+5. Cliquez sur "🚀 Lancer la campagne"
+6. **Le Meta Manager analysera automatiquement votre problématique et créera/répartira les tâches aux agents**
+
+## 🎨 Exemples d'utilisation
+
+### Crew Marketing Standard
+
+-   **Meta Manager** : Analyse et délégation
+-   **Clara** : Recherche web et veille
+-   **Julien** : Analyse stratégique
+-   **Sophie** : Rédaction de contenu
+
+### Crew E-commerce
+
+-   **Analyste Produit** : Analyse des produits
+-   **Expert SEO** : Optimisation SEO
+-   **Spécialiste Publicité** : Campagnes publicitaires
+-   **Rédacteur E-commerce** : Contenu commercial
+
+### Crew Créatif
+
+-   **Directeur Créatif** : Direction artistique
+-   **Concepteur Graphique** : Design visuel
+-   **Copywriter** : Rédaction créative
+-   **Stratège Social Media** : Stratégies réseaux sociaux
+
+## 🔧 Outils disponibles
+
+-   **serper_search** : Recherche web avec Serper API
+-   **website_search** : Recherche sur sites web
+-   **scrape_website** : Extraction de contenu web
+-   **pdf_search** : Recherche dans documents PDF
+-   **rag_tool** : Recherche augmentée par génération
+
+## 📁 Structure du projet
+
+```
+Crewai-marketing/
+├── src/
+│   ├── agent_config.py      # Gestion des agents
+│   ├── crew_config.py       # Gestion des crews
+│   ├── sequential_tasks.py  # Gestion des tâches
+│   ├── agents.py           # Création des agents
+│   ├── crew.py             # Construction des crews
+│   └── tools.py            # Outils disponibles
+├── streamlit_app.py        # Interface principale
+├── DEMO_INTERFACE.py      # Démonstration
+├── test_interface.py      # Tests
+└── INTERFACE_GUIDE.md     # Guide détaillé
+```
+
+## 🧪 Tests et Démonstration
+
+### Tests automatiques
+
+```bash
+python test_interface.py
+```
+
+### Démonstration interactive
+
+```bash
+python DEMO_INTERFACE.py
+```
+
+## 📚 Documentation
+
+-   **INTERFACE_GUIDE.md** : Guide détaillé de l'interface
+-   **DEMO_INTERFACE.py** : Script de démonstration
+-   **test_interface.py** : Tests de validation
+
+## 🆘 Dépannage
+
+### Problèmes courants
+
+-   **Aucun crew disponible** : Créez d'abord des agents et des crews
+-   **Erreur d'API** : Vérifiez vos clés API dans la sidebar
+-   **Tâches non exécutées** : Vérifiez l'ordre des tâches et les agents assignés
+
+### Support
+
+-   Vérifiez les logs dans la console
+-   Utilisez le bouton "🔄 Réinitialiser tout" en cas de problème
+-   Exportez votre configuration avant de faire des modifications importantes
+
+## 🐳 Docker (Optionnel)
+
+### Construction et exécution
 
 ```bash
 docker build -t crewai-marketing:latest .
@@ -30,62 +190,21 @@ docker run --rm -it -p 8501:8501 \
   crewai-marketing:latest
 ```
 
-### docker-compose
+### Avec docker-compose
 
 ```bash
 docker compose up --build
 ```
 
-Puis ouvre `http://localhost:8501`.
+## 🤝 Contribution
 
-## Configuration
+Les contributions sont les bienvenues ! N'hésitez pas à :
 
-Créez un fichier `.env` à la racine (ou utilisez des variables d'environnement) :
+-   Signaler des bugs
+-   Proposer des améliorations
+-   Ajouter de nouveaux agents ou outils
+-   Améliorer la documentation
 
-```bash
-OPENAI_API_KEY=sk-...
-OPENAI_MODEL=gpt-4o-mini
-CREWAI_TELEMETRY=False
+## 📄 Licence
 
-# Optionnel: Serper pour recherche web
-SERPER_API_KEY=...
-```
-
-Variables optionnelles:
-
--   `OPENAI_BASE_URL` pour un fournisseur compatible OpenAI
--   `OPENAI_MODEL` pour choisir le modèle (ex: `gpt-4o-mini`, `gpt-4o`)
--   `SERPER_API_KEY` pour activer la recherche web via Serper
-
-## Structure
-
-```
-.
-├─ streamlit_app.py     # UI Streamlit (interface principale)
-├─ src/
-│  ├─ agents.py         # Définition des agents CrewAI
-│  ├─ agent_config.py   # Configuration des agents
-│  ├─ sequential_tasks.py # Gestionnaire de tâches séquentielles
-│  ├─ tools.py          # Outils disponibles pour les agents
-│  └─ crew.py           # Orchestrateur Crew
-├─ requirements.txt
-├─ Dockerfile
-├─ docker-compose.yml
-└─ .env.example
-```
-
-## Fonctionnalités
-
--   **Interface Streamlit** avec 3 onglets :
-    -   🎯 **Campagne** : Saisie des exigences et checklist pré-kickoff
-    -   ⚙️ **Configuration Agents** : Personnalisation des agents, rôles, objectifs et outils
-    -   🔧 **Outils** : Gestion des outils disponibles (Serper, recherche web, scraping)
--   **Outils intégrés** : Recherche web (Serper), recherche sur site, scraping
--   **Configuration flexible** : Export/import des configurations d'agents
--   **Docker ready** : Déploiement facile avec docker-compose
-
-## Notes
-
--   Le Manager consolide la demande et coordonne les sous-agents via des tâches dédiées.
--   Chaque agent peut être configuré individuellement avec ses propres outils.
--   Les outils de recherche web nécessitent une clé API Serper (optionnelle).
+Ce projet est sous licence MIT. Voir le fichier LICENSE pour plus de détails.

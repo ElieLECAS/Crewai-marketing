@@ -5,10 +5,15 @@ from dotenv import load_dotenv
 from rich.console import Console
 from src.crew import build_dynamic_marketing_crew
 from src.agent_config import AgentConfigManager
+from src.crew_config import CrewConfigManager
 from src.tools import get_available_tools
 
 load_dotenv()
 console = Console()
+
+# Désactiver la télémetrie CrewAI pour éviter les erreurs
+import os
+os.environ["CREWAI_TELEMETRY"] = "False"
 
 st.set_page_config(page_title="CrewAI Marketing", page_icon="📈", layout="wide")
 
@@ -16,123 +21,440 @@ st.set_page_config(page_title="CrewAI Marketing", page_icon="📈", layout="wide
 if 'config_manager' not in st.session_state:
     st.session_state.config_manager = AgentConfigManager()
 
-def display_generated_posts(result):
-    """Affiche les posts générés de manière claire et structurée"""
-    st.markdown("---")
-    st.markdown("## 📱 Posts LinkedIn")
+if 'crew_config_manager' not in st.session_state:
+    st.session_state.crew_config_manager = CrewConfigManager(st.session_state.config_manager)
+
+def parse_markdown_result(result):
+    """Parse le résultat Markdown et extrait les sections structurées"""
+    result_str = str(result)
     
-    # Section LinkedIn
-    st.markdown("### 💼 Posts LinkedIn (10 posts)")
+    # Dictionnaire pour stocker les sections parsées
+    parsed_sections = {
+        'meta_manager': '',
+        'linkedin_posts': [],
+        'instagram_posts': [],
+        'other_content': []
+    }
+    
+    # Diviser le résultat en lignes
+    lines = result_str.split('\n')
+    current_section = 'other_content'
+    current_post = ''
+    post_counter = 0
+    
+    for line in lines:
+        line = line.strip()
+        
+        # Détecter les sections principales
+        if 'meta manager' in line.lower() or 'meta agent' in line.lower() or 'plan d\'action' in line.lower():
+            current_section = 'meta_manager'
+            continue
+        elif 'linkedin' in line.lower() and ('post' in line.lower() or 'contenu' in line.lower()):
+            current_section = 'linkedin_posts'
+            continue
+        elif 'instagram' in line.lower() and ('post' in line.lower() or 'contenu' in line.lower()):
+            current_section = 'instagram_posts'
+            continue
+        
+        # Traiter les posts
+        if current_section in ['linkedin_posts', 'instagram_posts']:
+            if line.startswith('**') and 'post' in line.lower():
+                # Nouveau post détecté
+                if current_post:
+                    parsed_sections[current_section].append(current_post.strip())
+                current_post = line + '\n'
+                post_counter += 1
+            elif line and not line.startswith('---'):
+                current_post += line + '\n'
+        else:
+            # Contenu général
+            if current_section == 'meta_manager':
+                parsed_sections['meta_manager'] += line + '\n'
+            else:
+                parsed_sections['other_content'].append(line)
+    
+    # Ajouter le dernier post s'il existe
+    if current_post:
+        parsed_sections[current_section].append(current_post.strip())
+    
+    return parsed_sections
+
+def extract_posts_from_text(text, platform):
+    """Extrait les posts d'une plateforme spécifique du texte"""
+    posts = []
+    lines = text.split('\n')
+    current_post = ''
+    in_post = False
+    
+    for line in lines:
+        line = line.strip()
+        
+        # Détecter le début d'un post
+        if platform.lower() in line.lower() and ('post' in line.lower() or 'contenu' in line.lower()):
+            if current_post:
+                posts.append(current_post.strip())
+            current_post = line + '\n'
+            in_post = True
+        elif in_post and line and not line.startswith('---'):
+            current_post += line + '\n'
+        elif in_post and line.startswith('---'):
+            in_post = False
+            if current_post:
+                posts.append(current_post.strip())
+                current_post = ''
+    
+    # Ajouter le dernier post s'il existe
+    if current_post:
+        posts.append(current_post.strip())
+    
+    return posts
+
+def smart_parse_result(result):
+    """Parse intelligent du résultat avec détection automatique des sections"""
+    result_str = str(result)
+    
+    # Dictionnaire pour stocker les sections parsées
+    parsed_sections = {
+        'meta_manager': '',
+        'linkedin_posts': [],
+        'instagram_posts': [],
+        'other_content': []
+    }
+    
+    # Extraire les posts LinkedIn
+    linkedin_posts = extract_posts_from_text(result_str, 'linkedin')
+    parsed_sections['linkedin_posts'] = linkedin_posts
+    
+    # Extraire les posts Instagram
+    instagram_posts = extract_posts_from_text(result_str, 'instagram')
+    parsed_sections['instagram_posts'] = instagram_posts
+    
+    # Extraire le plan du Meta Manager
+    lines = result_str.split('\n')
+    meta_manager_content = []
+    in_meta_section = False
+    
+    for line in lines:
+        line = line.strip()
+        
+        if 'meta manager' in line.lower() or 'meta agent' in line.lower() or 'plan d\'action' in line.lower():
+            in_meta_section = True
+            meta_manager_content.append(line)
+        elif in_meta_section and ('linkedin' in line.lower() or 'instagram' in line.lower()):
+            in_meta_section = False
+            break
+        elif in_meta_section:
+            meta_manager_content.append(line)
+    
+    parsed_sections['meta_manager'] = '\n'.join(meta_manager_content)
+    
+    # Le reste du contenu
+    other_content = []
+    for line in lines:
+        line = line.strip()
+        if line and not any(keyword in line.lower() for keyword in ['meta manager', 'meta agent', 'linkedin', 'instagram', 'post']):
+            other_content.append(line)
+    
+    parsed_sections['other_content'] = other_content
+    
+    return parsed_sections
+
+def format_markdown_text(text):
+    """Formate le texte Markdown pour un meilleur affichage"""
+    if not text:
+        return text
+    
+    # Remplacer les éléments Markdown par du HTML pour un meilleur rendu
+    formatted = text
+    
+    # Gras
+    formatted = formatted.replace('**', '<strong>').replace('**', '</strong>')
+    
+    # Italique
+    formatted = formatted.replace('*', '<em>').replace('*', '</em>')
+    
+    # Listes à puces
+    lines = formatted.split('\n')
+    formatted_lines = []
+    in_list = False
+    
+    for line in lines:
+        if line.strip().startswith('- '):
+            if not in_list:
+                formatted_lines.append('<ul>')
+                in_list = True
+            formatted_lines.append(f'<li>{line.strip()[2:]}</li>')
+        else:
+            if in_list:
+                formatted_lines.append('</ul>')
+                in_list = False
+            formatted_lines.append(line)
+    
+    if in_list:
+        formatted_lines.append('</ul>')
+    
+    return '\n'.join(formatted_lines)
+
+def display_parsed_result(result):
+    """Affiche le résultat parsé avec un formatage Markdown amélioré"""
+    parsed = smart_parse_result(result)
+    
+    # Section Meta Manager
+    if parsed['meta_manager']:
+        st.markdown("---")
+        st.markdown("## 🧠 Plan du Meta Manager")
+        
+        # Afficher le plan du Meta Manager avec formatage Markdown
+        st.markdown(parsed['meta_manager'])
+        
+        # Boutons d'action pour le plan du Meta Manager
+        col_btn1, col_btn2 = st.columns(2)
+        with col_btn1:
+            if st.button("📋 Copier le plan", key="copy_meta_plan", type="secondary"):
+                st.code(parsed['meta_manager'], language="text")
+                st.success("Plan affiché ci-dessus - vous pouvez le copier !")
+        
+        with col_btn2:
+            if st.button("📥 Télécharger le plan", key="download_meta_plan", type="secondary"):
+                st.download_button(
+                    label="Télécharger le plan",
+                    data=parsed['meta_manager'],
+                    file_name="plan_meta_manager.txt",
+                    mime="text/plain"
+                )
+    
+    # Section LinkedIn Posts
+    if parsed['linkedin_posts']:
+        st.markdown("---")
+        st.markdown("## 💼 Posts LinkedIn")
     
     # Créer des colonnes pour afficher les posts
     col1, col2 = st.columns(2)
     
-    with col1:
-        st.markdown("**Post LinkedIn 1**")
-        st.text_area("Contenu du post LinkedIn 1", value="[Contenu du post LinkedIn 1]", height=100, key="linkedin_1", label_visibility="collapsed")
-        
-        st.markdown("**Post LinkedIn 2**")
-        st.text_area("Contenu du post LinkedIn 2", value="[Contenu du post LinkedIn 2]", height=100, key="linkedin_2", label_visibility="collapsed")
-        
-        st.markdown("**Post LinkedIn 3**")
-        st.text_area("Contenu du post LinkedIn 3", value="[Contenu du post LinkedIn 3]", height=100, key="linkedin_3", label_visibility="collapsed")
-        
-        st.markdown("**Post LinkedIn 4**")
-        st.text_area("Contenu du post LinkedIn 4", value="[Contenu du post LinkedIn 4]", height=100, key="linkedin_4", label_visibility="collapsed")
-        
-        st.markdown("**Post LinkedIn 5**")
-        st.text_area("Contenu du post LinkedIn 5", value="[Contenu du post LinkedIn 5]", height=100, key="linkedin_5", label_visibility="collapsed")
+    for i, post in enumerate(parsed['linkedin_posts']):
+            with (col1 if i % 2 == 0 else col2):
+                # Extraire le titre du post
+                lines = post.split('\n')
+                title = lines[0] if lines else f"Post LinkedIn {i+1}"
+                content = '\n'.join(lines[1:]) if len(lines) > 1 else post
+                
+                # Afficher le titre formaté
+                st.markdown(f"**{title}**")
+                
+                # Afficher le contenu dans une text_area éditable
+                edited_content = st.text_area(
+                    f"Contenu du {title.lower()}",
+                    value=content.strip(),
+                    height=120,
+                    key=f"linkedin_{i+1}",
+                    label_visibility="collapsed"
+                )
+                
+                # Boutons d'action pour ce post
+                col_btn1, col_btn2 = st.columns(2)
+                with col_btn1:
+                    if st.button("📋 Copier", key=f"copy_linkedin_{i+1}", type="secondary"):
+                        st.code(edited_content, language="text")
+                        st.success("Contenu affiché ci-dessus - vous pouvez le copier !")
+                
+                with col_btn2:
+                    if st.button("📥 Télécharger", key=f"download_linkedin_{i+1}", type="secondary"):
+                        st.download_button(
+                            label="Télécharger ce post",
+                            data=edited_content,
+                            file_name=f"post_linkedin_{i+1}.txt",
+                            mime="text/plain"
+                        )
     
-    with col2:
-        st.markdown("**Post LinkedIn 6**")
-        st.text_area("Contenu du post LinkedIn 6", value="[Contenu du post LinkedIn 6]", height=100, key="linkedin_6", label_visibility="collapsed")
-        
-        st.markdown("**Post LinkedIn 7**")
-        st.text_area("Contenu du post LinkedIn 7", value="[Contenu du post LinkedIn 7]", height=100, key="linkedin_7", label_visibility="collapsed")
-        
-        st.markdown("**Post LinkedIn 8**")
-        st.text_area("Contenu du post LinkedIn 8", value="[Contenu du post LinkedIn 8]", height=100, key="linkedin_8", label_visibility="collapsed")
-        
-        st.markdown("**Post LinkedIn 9**")
-        st.text_area("Contenu du post LinkedIn 9", value="[Contenu du post LinkedIn 9]", height=100, key="linkedin_9", label_visibility="collapsed")
-        
-        st.markdown("**Post LinkedIn 10**")
-        st.text_area("Contenu du post LinkedIn 10", value="[Contenu du post LinkedIn 10]", height=100, key="linkedin_10", label_visibility="collapsed")
+    # Section Instagram Posts
+    if parsed['instagram_posts']:
+        st.markdown("---")
+        st.markdown("## 📸 Posts Instagram")
     
+        # Créer des colonnes pour afficher les posts
+        col1, col2 = st.columns(2)
+        
+        for i, post in enumerate(parsed['instagram_posts']):
+            with (col1 if i % 2 == 0 else col2):
+                # Extraire le titre du post
+                lines = post.split('\n')
+                title = lines[0] if lines else f"Post Instagram {i+1}"
+                content = '\n'.join(lines[1:]) if len(lines) > 1 else post
+                
+                # Afficher le titre formaté
+                st.markdown(f"**{title}**")
+                
+                # Afficher le contenu dans une text_area éditable
+                edited_content = st.text_area(
+                    f"Contenu du {title.lower()}",
+                    value=content.strip(),
+                    height=120,
+                    key=f"instagram_{i+1}",
+                    label_visibility="collapsed"
+                )
+                
+                # Boutons d'action pour ce post
+                col_btn1, col_btn2 = st.columns(2)
+                with col_btn1:
+                    if st.button("📋 Copier", key=f"copy_instagram_{i+1}", type="secondary"):
+                        st.code(edited_content, language="text")
+                        st.success("Contenu affiché ci-dessus - vous pouvez le copier !")
+                
+                with col_btn2:
+                    if st.button("📥 Télécharger", key=f"download_instagram_{i+1}", type="secondary"):
+                        st.download_button(
+                            label="Télécharger ce post",
+                            data=edited_content,
+                            file_name=f"post_instagram_{i+1}.txt",
+                            mime="text/plain"
+                        )
+    
+    # Section Autres contenus
+    if parsed['other_content']:
+        st.markdown("---")
+        st.markdown("## 📋 Autres contenus")
+        for content in parsed['other_content']:
+            if content.strip():
+                st.markdown(content)
+    
+    # Boutons d'action globaux
     st.markdown("---")
-    st.markdown("## 📸 Posts Instagram")
+    st.markdown("## 🔧 Actions globales")
     
-    # Section Instagram
-    st.markdown("### 📱 Posts Instagram (10 posts)")
-    
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        st.markdown("**Post Instagram 1**")
-        st.text_area("Contenu du post Instagram 1", value="[Contenu du post Instagram 1]", height=100, key="instagram_1", label_visibility="collapsed")
-        
-        st.markdown("**Post Instagram 2**")
-        st.text_area("Contenu du post Instagram 2", value="[Contenu du post Instagram 2]", height=100, key="instagram_2", label_visibility="collapsed")
-        
-        st.markdown("**Post Instagram 3**")
-        st.text_area("Contenu du post Instagram 3", value="[Contenu du post Instagram 3]", height=100, key="instagram_3", label_visibility="collapsed")
-        
-        st.markdown("**Post Instagram 4**")
-        st.text_area("Contenu du post Instagram 4", value="[Contenu du post Instagram 4]", height=100, key="instagram_4", label_visibility="collapsed")
-        
-        st.markdown("**Post Instagram 5**")
-        st.text_area("Contenu du post Instagram 5", value="[Contenu du post Instagram 5]", height=100, key="instagram_5", label_visibility="collapsed")
-    
-    with col2:
-        st.markdown("**Post Instagram 6**")
-        st.text_area("Contenu du post Instagram 6", value="[Contenu du post Instagram 6]", height=100, key="instagram_6", label_visibility="collapsed")
-        
-        st.markdown("**Post Instagram 7**")
-        st.text_area("Contenu du post Instagram 7", value="[Contenu du post Instagram 7]", height=100, key="instagram_7", label_visibility="collapsed")
-        
-        st.markdown("**Post Instagram 8**")
-        st.text_area("Contenu du post Instagram 8", value="[Contenu du post Instagram 8]", height=100, key="instagram_8", label_visibility="collapsed")
-        
-        st.markdown("**Post Instagram 9**")
-        st.text_area("Contenu du post Instagram 9", value="[Contenu du post Instagram 9]", height=100, key="instagram_9", label_visibility="collapsed")
-        
-        st.markdown("**Post Instagram 10**")
-        st.text_area("Contenu du post Instagram 10", value="[Contenu du post Instagram 10]", height=100, key="instagram_10", label_visibility="collapsed")
-    
-    # Boutons d'action
-    st.markdown("---")
-    col1, col2, col3 = st.columns(3)
+    col1, col2, col3, col4 = st.columns(4)
     
     with col1:
         if st.button("📥 Télécharger tous les posts", type="secondary"):
-            st.success("Téléchargement en cours...")
+            # Collecter tous les posts
+            all_posts = []
+            for post in parsed['linkedin_posts'] + parsed['instagram_posts']:
+                all_posts.append(post)
+            
+            # Créer un fichier texte
+            posts_text = "\n\n".join(all_posts)
+            st.download_button(
+                label="Télécharger posts.txt",
+                data=posts_text,
+                file_name="posts_generes.txt",
+                mime="text/plain"
+            )
     
     with col2:
-        if st.button("📋 Copier dans le presse-papier", type="secondary"):
-            st.success("Copié dans le presse-papier !")
+        if st.button("📋 Copier tous les posts", type="secondary"):
+            # Collecter tous les posts
+            all_posts = []
+            for post in parsed['linkedin_posts'] + parsed['instagram_posts']:
+                all_posts.append(post)
+            
+            posts_text = "\n\n".join(all_posts)
+            st.code(posts_text, language="text")
+            st.success("Contenu affiché ci-dessus - vous pouvez le copier !")
     
     with col3:
+        if st.button("📊 Télécharger rapport complet", type="secondary"):
+            # Créer un rapport complet
+            rapport_complet = []
+            
+            if parsed['meta_manager']:
+                rapport_complet.append("=== PLAN DU META MANAGER ===")
+                rapport_complet.append(parsed['meta_manager'])
+                rapport_complet.append("")
+            
+            if parsed['linkedin_posts']:
+                rapport_complet.append("=== POSTS LINKEDIN ===")
+                for i, post in enumerate(parsed['linkedin_posts'], 1):
+                    rapport_complet.append(f"Post LinkedIn {i}:")
+                    rapport_complet.append(post)
+                    rapport_complet.append("")
+            
+            if parsed['instagram_posts']:
+                rapport_complet.append("=== POSTS INSTAGRAM ===")
+                for i, post in enumerate(parsed['instagram_posts'], 1):
+                    rapport_complet.append(f"Post Instagram {i}:")
+                    rapport_complet.append(post)
+                    rapport_complet.append("")
+            
+            rapport_text = "\n".join(rapport_complet)
+            st.download_button(
+                label="Télécharger rapport complet",
+                data=rapport_text,
+                file_name="rapport_campagne_complet.txt",
+                mime="text/plain"
+            )
+    
+    with col4:
         if st.button("🔄 Régénérer les posts", type="secondary"):
             st.rerun()
 
+def display_enhanced_result(result):
+    """Affiche le résultat avec un formatage Markdown amélioré et des posts éditables"""
+    result_str = str(result)
+    
+    # Afficher le résultat brut dans un onglet
+    tab1, tab2 = st.tabs(["📋 Résultat Formaté", "🔍 Résultat Brut"])
+    
+    with tab1:
+        # Parser et afficher le résultat formaté
+        display_parsed_result(result)
+    
+    with tab2:
+        # Afficher le résultat brut avec formatage Markdown
+        st.markdown("## 📄 Résultat Brut (Markdown)")
+        st.markdown(result_str)
+        
+        # Bouton pour copier le résultat brut
+        if st.button("📋 Copier le résultat brut", type="secondary"):
+            st.code(result_str, language="text")
+            st.success("Résultat affiché ci-dessus - vous pouvez le copier !")
+
+def display_generated_posts(result):
+    """Affiche les posts générés de manière claire et structurée"""
+    # Afficher le résultat parsé
+    display_parsed_result(result)
+
 # Navigation
-tab1, tab2, tab3, tab4 = st.tabs(["🎯 Campagne", "📄 Documents PDF", "⚙️ Configuration Agents", "🔧 Outils"])
+tab1, tab2, tab3, tab4, tab5 = st.tabs([
+    "🎯 Campagne", 
+    "🤖 Gestion Agents", 
+    "👥 Gestion Crews", 
+    "📄 Documents PDF", 
+    "🔧 Outils"
+])
 
 with tab1:
-    st.title("🎯 Meta Agent Manager - Marketing Dynamique")
+    st.title("🎯 Campagne Marketing")
     
-    # Information sur la nouvelle architecture
+    # Information sur l'utilisation
     st.info("""
-    **🔄 Nouvelle Architecture Dynamique :**
+    **🚀 Interface CrewAI Marketing :**
     
-    Le **Meta Agent Manager** analyse votre problématique et crée des tâches adaptées pour :
-    
-    👩‍💻 **Clara (Détective Digitale)** - Recherche web, veille, hashtags, exemples concrets
-    📊 **Julien (Analyste Stratégique)** - Analyse contextuelle, filtrage, adaptation au secteur  
-    ✍️ **Sophie (Plume Solidaire)** - Rédaction LinkedIn, contenu engageant
-    
-    Plus de tâches prédéfinies ! Chaque problématique génère ses propres tâches personnalisées.
+    1. **Créez vos agents** dans l'onglet "🤖 Gestion Agents" avec le bouton "➕ Créer un nouvel agent"
+    2. **Créez vos crews** dans l'onglet "👥 Gestion Crews" en sélectionnant les agents souhaités
+    3. **Lancez votre campagne** en sélectionnant le crew et en décrivant votre problématique
+    4. **Le Meta Manager** analysera automatiquement votre problématique et créera/répartira les tâches aux agents
     """)
+    
+    # Sélection du crew
+    st.markdown("### 👥 Sélection du Crew")
+    crews = st.session_state.crew_config_manager.get_all_crews()
+    
+    if crews:
+        crew_names = list(crews.keys())
+        selected_crew_name = st.selectbox(
+            "Choisissez le crew à utiliser pour cette campagne :",
+            crew_names,
+            help="Sélectionnez le crew qui sera utilisé pour exécuter les tâches de votre campagne"
+        )
+        
+        if selected_crew_name:
+            selected_crew = crews[selected_crew_name]
+            st.info(f"**Crew sélectionné :** {selected_crew.name}")
+            st.write(f"**Description :** {selected_crew.description}")
+            st.write(f"**Agents :** {', '.join(selected_crew.selected_agents)}")
+            st.info("💡 Le Meta Manager créera automatiquement les tâches selon votre problématique")
+    else:
+        st.warning("Aucun crew configuré. Créez d'abord des agents et des crews dans les onglets correspondants.")
+        selected_crew_name = None
     
     with st.sidebar:
         st.header("🔑 Configuration API")
@@ -140,6 +462,14 @@ with tab1:
         serper_key = st.text_input("SERPER_API_KEY", type="password", value=os.getenv("SERPER_API_KEY", ""))
         model = st.text_input("OPENAI_MODEL", value=os.getenv("OPENAI_MODEL", "gpt-4o-mini"))
         st.caption("Ces valeurs peuvent aussi venir de .env")
+        
+        st.markdown("---")
+        st.info("""
+        **💡 Conseils :**
+        - La télémetrie CrewAI est désactivée
+        - Les PDFs sont automatiquement copiés dans le dossier `knowledge/`
+        - Vérifiez vos clés API si des erreurs surviennent
+        """)
     
     # Interface pour la problématique marketing
     st.markdown("### 🎯 Votre problématique marketing")
@@ -166,9 +496,9 @@ with tab1:
         st.info("💡 Uploadez vos PDFs dans l'onglet 'Documents PDF' pour des posts plus précis")
     
     # Bouton de génération
-    run_disabled = not problem_statement.strip()
+    run_disabled = not problem_statement.strip() or not selected_crew_name
     
-    if st.button("🚀 Analyser ma problématique et générer du contenu", type="primary", disabled=run_disabled):
+    if st.button("🚀 Lancer la campagne avec le crew sélectionné", type="primary", disabled=run_disabled):
         if not openai_key:
             st.error("❌ OPENAI_API_KEY manquant. Renseignez la clé dans la sidebar.")
         else:
@@ -179,32 +509,384 @@ with tab1:
             if model:
                 os.environ["OPENAI_MODEL"] = model
             
-            with st.spinner("🤖 Le Meta Agent Manager analyse votre problématique et coordonne l'équipe..."):
-                # Construire l'équipe dynamique avec les PDFs
-                crew = build_dynamic_marketing_crew(
-                    problem_statement=problem_statement,
-                    company_context=company_context,
-                    config_manager=st.session_state.config_manager,
-                    pdf_paths=pdf_paths
-                )
-                
-                # Lancer l'équipe
-                result = crew.kickoff()
+            with st.spinner(f"🤖 Le Meta Manager analyse votre problématique et coordonne l'équipe '{selected_crew.name}'..."):
+                try:
+                    # Construire le crew avec le système de tâches automatiques
+                    crew = build_dynamic_marketing_crew(
+                        problem_statement=problem_statement,
+                        company_context=company_context,
+                        config_manager=st.session_state.config_manager,
+                        pdf_paths=pdf_paths,
+                        selected_agents=selected_crew.selected_agents
+                    )
+                    
+                    # Lancer l'équipe
+                    result = crew.kickoff()
+                except Exception as e:
+                    st.error(f"❌ Erreur lors de l'exécution du crew : {str(e)}")
+                    st.error("💡 Vérifiez vos clés API et la configuration des agents")
+                    result = None
             
             # Afficher les résultats de manière claire
-            st.success("✅ Analyse terminée et contenu généré avec succès !")
-            
-            # Afficher le résultat brut pour l'instant
-            st.markdown("## 📋 Résultat de l'analyse")
-            st.text_area("Résultat complet", value=str(result), height=400)
-            
-            # Parser et afficher les posts de manière structurée
-            display_generated_posts(result)
+            if result is not None:
+                st.success("✅ Campagne terminée avec succès !")
+                
+                # Afficher le résultat avec formatage Markdown amélioré
+                display_enhanced_result(result)
+            else:
+                st.error("❌ La campagne n'a pas pu être exécutée. Vérifiez les erreurs ci-dessus.")
     
     if not problem_statement.strip():
         st.info("💡 Décrivez votre problématique marketing pour que le Meta Agent Manager puisse créer des tâches adaptées")
 
 with tab2:
+    st.title("🤖 Gestion des Agents")
+    
+    # Section de création d'agent avec design en grille
+    st.markdown("### ➕ Créer un nouvel agent")
+    
+    # Bouton de création dans un conteneur stylé
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        if st.button("➕ Créer un nouvel agent", type="primary", use_container_width=True):
+            st.session_state.show_new_agent_form = True
+    
+    if st.session_state.get('show_new_agent_form', False):
+        st.markdown("### ➕ Créer un nouvel agent")
+        
+        with st.form("new_agent_form"):
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                new_name = st.text_input("Nom de l'agent", placeholder="ex: mon_agent")
+                new_role = st.text_input("Rôle", placeholder="ex: Analyste Marketing")
+                new_goal = st.text_area("Objectif", placeholder="Décrivez l'objectif principal de cet agent", height=100)
+            
+            with col2:
+                new_backstory = st.text_area("Backstory", placeholder="Décrivez l'histoire et les compétences de cet agent", height=100)
+                new_max_iter = st.number_input("Max Iterations", value=3, min_value=1, max_value=10)
+                new_verbose = st.checkbox("Verbose", value=True)
+            
+            # Configuration des outils
+            available_tools = st.session_state.config_manager.get_available_tools()
+            st.write("**Outils disponibles :**")
+            selected_tools = []
+            for tool_name, tool_info in available_tools.items():
+                if st.checkbox(f"{tool_info['name']} - {tool_info['description']}", key=f"new_agent_tool_{tool_name}"):
+                    selected_tools.append(tool_name)
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.form_submit_button("✅ Créer l'agent", type="primary"):
+                    if new_name and new_role and new_goal:
+                        try:
+                            agent_name = st.session_state.config_manager.create_new_agent(
+                                name=new_name,
+                                role=new_role,
+                                goal=new_goal,
+                                backstory=new_backstory,
+                                enabled_tools=selected_tools,
+                                max_iter=new_max_iter,
+                                verbose=new_verbose
+                            )
+                            st.success(f"Agent '{agent_name}' créé avec succès !")
+                            st.session_state.show_new_agent_form = False
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Erreur lors de la création : {e}")
+                    else:
+                        st.error("Veuillez remplir au moins le nom, le rôle et l'objectif")
+            
+            with col2:
+                if st.form_submit_button("❌ Annuler"):
+                    st.session_state.show_new_agent_form = False
+                    st.rerun()
+    
+    # Affichage des agents existants en grille
+    st.markdown("### 📋 Agents existants")
+    agents = st.session_state.config_manager.get_all_agents()
+    
+    if agents:
+        # Créer une grille responsive
+        cols_per_row = 3
+        agent_items = list(agents.items())
+        
+        for i in range(0, len(agent_items), cols_per_row):
+            cols = st.columns(cols_per_row)
+            
+            for j, (agent_name, agent_config) in enumerate(agent_items[i:i+cols_per_row]):
+                with cols[j]:
+                    # Tuile carrée pour chaque agent
+                    with st.container():
+                        st.markdown(f"""
+                        <div style="
+                            border: 1px solid #e0e0e0;
+                            border-radius: 10px;
+                            padding: 20px;
+                            margin: 10px 0;
+                            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+                            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                            height: 300px;
+                            overflow-y: auto;
+                        ">
+                            <h4 style="margin-top: 0; color: #2c3e50;">🤖 {agent_config.name}</h4>
+                            <p style="color: #7f8c8d; font-size: 14px; margin: 5px 0;">{agent_config.role}</p>
+                        </div>
+                        """, unsafe_allow_html=True)
+                        
+                        # Informations détaillées
+                        with st.expander("📋 Détails", expanded=False):
+                            st.write(f"**Objectif :** {agent_config.goal}")
+                            st.write(f"**Backstory :** {agent_config.backstory}")
+                            st.write(f"**Outils :** {', '.join(agent_config.enabled_tools) if agent_config.enabled_tools else 'Aucun'}")
+                            st.write(f"**Max Iterations :** {agent_config.max_iter}")
+                            st.write(f"**Verbose :** {'Oui' if agent_config.verbose else 'Non'}")
+                        
+                        # Boutons d'action
+                        col1, col2 = st.columns(2)
+                        
+                        with col1:
+                            if st.button("✏️ Modifier", key=f"edit_{agent_name}", type="secondary"):
+                                st.session_state[f"editing_agent_{agent_name}"] = True
+                                st.rerun()
+                        
+                        with col2:
+                            if st.button("🗑️ Supprimer", key=f"delete_{agent_name}", type="secondary"):
+                                if st.session_state.config_manager.delete_agent(agent_name):
+                                    st.success(f"Agent '{agent_name}' supprimé !")
+                                    st.rerun()
+                                else:
+                                    st.error("Erreur lors de la suppression")
+        
+        # Formulaire de modification d'agent
+        for agent_name, agent_config in agents.items():
+            if st.session_state.get(f"editing_agent_{agent_name}", False):
+                st.markdown(f"### ✏️ Modification de l'agent : {agent_config.name}")
+                
+                with st.form(f"edit_agent_form_{agent_name}"):
+                    col1, col2 = st.columns(2)
+                    
+                    with col1:
+                        edit_name = st.text_input("Nom de l'agent", value=agent_config.name, key=f"edit_name_{agent_name}")
+                        edit_role = st.text_input("Rôle", value=agent_config.role, key=f"edit_role_{agent_name}")
+                        edit_goal = st.text_area("Objectif", value=agent_config.goal, key=f"edit_goal_{agent_name}", height=100)
+                    
+                    with col2:
+                        edit_backstory = st.text_area("Backstory", value=agent_config.backstory, key=f"edit_backstory_{agent_name}", height=100)
+                        edit_max_iter = st.number_input("Max Iterations", value=agent_config.max_iter, min_value=1, max_value=10, key=f"edit_max_iter_{agent_name}")
+                        edit_verbose = st.checkbox("Verbose", value=agent_config.verbose, key=f"edit_verbose_{agent_name}")
+                    
+                    # Configuration des outils pour cet agent
+                    available_tools = st.session_state.config_manager.get_available_tools()
+                    edit_enabled_tools = []
+                    
+                    st.write("**Outils disponibles :**")
+                    for tool_name, tool_info in available_tools.items():
+                        if st.checkbox(
+                            f"{tool_info['name']} - {tool_info['description']}", 
+                            value=tool_name in agent_config.enabled_tools,
+                            key=f"edit_tool_{agent_name}_{tool_name}"
+                        ):
+                            edit_enabled_tools.append(tool_name)
+                    
+                    col1, col2, col3 = st.columns(3)
+                    with col1:
+                        if st.form_submit_button("💾 Sauvegarder", type="primary"):
+                            # Mettre à jour la configuration
+                            agent_config.name = edit_name
+                            agent_config.role = edit_role
+                            agent_config.goal = edit_goal
+                            agent_config.backstory = edit_backstory
+                            agent_config.verbose = edit_verbose
+                            agent_config.max_iter = edit_max_iter
+                            agent_config.enabled_tools = edit_enabled_tools
+                            
+                            st.session_state.config_manager.update_agent_config(agent_name, agent_config)
+                            st.session_state[f"editing_agent_{agent_name}"] = False
+                            st.success(f"Agent '{edit_name}' modifié avec succès !")
+                            st.rerun()
+                    
+                    with col2:
+                        if st.form_submit_button("❌ Annuler"):
+                            st.session_state[f"editing_agent_{agent_name}"] = False
+                            st.rerun()
+                    
+                    with col3:
+                        if st.form_submit_button("🗑️ Supprimer"):
+                            if st.session_state.config_manager.delete_agent(agent_name):
+                                st.session_state[f"editing_agent_{agent_name}"] = False
+                                st.success(f"Agent '{agent_name}' supprimé !")
+                                st.rerun()
+                            else:
+                                st.error("Erreur lors de la suppression")
+    else:
+        st.info("Aucun agent configuré. Créez votre premier agent avec le bouton '➕ Créer un nouvel agent'")
+
+with tab3:
+    st.title("👥 Gestion des Crews")
+    
+    # Section de création de crew avec design en grille
+    st.markdown("### ➕ Créer un nouveau crew")
+    
+    # Bouton de création dans un conteneur stylé
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        if st.button("➕ Créer un nouveau crew", type="primary", use_container_width=True):
+            st.session_state.show_new_crew_form = True
+    
+    if st.session_state.get('show_new_crew_form', False):
+        st.markdown("### ➕ Créer un nouveau crew")
+        
+        with st.form("new_crew_form"):
+            new_crew_name = st.text_input("Nom du crew", placeholder="ex: Mon Crew Marketing")
+            new_crew_description = st.text_area("Description", placeholder="Décrivez le rôle de ce crew", height=100)
+            
+            # Sélection des agents
+            available_agents = st.session_state.config_manager.get_all_agents()
+            if available_agents:
+                st.write("**Sélectionnez les agents pour ce crew :**")
+                selected_agents = []
+                for agent_name, agent_config in available_agents.items():
+                    if st.checkbox(f"{agent_config.name} - {agent_config.role}", key=f"crew_agent_{agent_name}"):
+                        selected_agents.append(agent_name)
+            else:
+                st.warning("Aucun agent disponible. Créez d'abord des agents.")
+                selected_agents = []
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.form_submit_button("✅ Créer le crew", type="primary"):
+                    if new_crew_name and selected_agents:
+                        try:
+                            crew_name = st.session_state.crew_config_manager.create_new_crew(
+                                name=new_crew_name,
+                                description=new_crew_description,
+                                selected_agents=selected_agents
+                            )
+                            st.success(f"Crew '{crew_name}' créé avec succès !")
+                            st.session_state.show_new_crew_form = False
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Erreur lors de la création : {e}")
+                    else:
+                        st.error("Veuillez remplir le nom et sélectionner au moins un agent")
+            
+            with col2:
+                if st.form_submit_button("❌ Annuler"):
+                    st.session_state.show_new_crew_form = False
+                    st.rerun()
+    
+    # Affichage des crews existants en grille
+    st.markdown("### 📋 Crews existants")
+    crews = st.session_state.crew_config_manager.get_all_crews()
+    
+    if crews:
+        # Créer une grille responsive
+        cols_per_row = 2
+        crew_items = list(crews.items())
+        
+        for i in range(0, len(crew_items), cols_per_row):
+            cols = st.columns(cols_per_row)
+            
+            for j, (crew_name, crew_config) in enumerate(crew_items[i:i+cols_per_row]):
+                with cols[j]:
+                    # Tuile carrée pour chaque crew
+                    with st.container():
+                        st.markdown(f"""
+                        <div style="
+                            border: 1px solid #e0e0e0;
+                            border-radius: 10px;
+                            padding: 20px;
+                            margin: 10px 0;
+                            background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%);
+                            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                            height: 250px;
+                            overflow-y: auto;
+                        ">
+                            <h4 style="margin-top: 0; color: #1565c0;">👥 {crew_config.name}</h4>
+                            <p style="color: #424242; font-size: 14px; margin: 5px 0;">{crew_config.description}</p>
+                        </div>
+                        """, unsafe_allow_html=True)
+                        
+                        # Informations détaillées
+                        with st.expander("📋 Détails", expanded=False):
+                            st.write(f"**Description :** {crew_config.description}")
+                            st.write(f"**Agents :** {', '.join(crew_config.selected_agents)}")
+                            st.write(f"**Type de processus :** {crew_config.process_type}")
+                            st.info("💡 Le Meta Manager créera automatiquement les tâches selon votre problématique")
+                        
+                        # Boutons d'action
+                        col1, col2 = st.columns(2)
+                        
+                        with col1:
+                            if st.button("✏️ Modifier", key=f"edit_crew_{crew_name}", type="secondary"):
+                                st.session_state[f"editing_crew_{crew_name}"] = True
+                                st.rerun()
+                        
+                        with col2:
+                            if st.button("🗑️ Supprimer", key=f"delete_crew_{crew_name}", type="secondary"):
+                                if st.session_state.crew_config_manager.delete_crew(crew_name):
+                                    st.success(f"Crew '{crew_name}' supprimé !")
+                                    st.rerun()
+                                else:
+                                    st.error("Erreur lors de la suppression")
+        
+        # Formulaire de modification de crew
+        for crew_name, crew_config in crews.items():
+            if st.session_state.get(f"editing_crew_{crew_name}", False):
+                st.markdown(f"### ✏️ Modification du crew : {crew_config.name}")
+                
+                with st.form(f"edit_crew_form_{crew_name}"):
+                    edit_crew_name = st.text_input("Nom du crew", value=crew_config.name, key=f"edit_crew_name_{crew_name}")
+                    edit_crew_description = st.text_area("Description", value=crew_config.description, key=f"edit_crew_description_{crew_name}", height=100)
+                    
+                    # Sélection des agents
+                    available_agents = st.session_state.config_manager.get_all_agents()
+                    if available_agents:
+                        st.write("**Sélectionnez les agents pour ce crew :**")
+                        edit_selected_agents = []
+                        for agent_name, agent_config in available_agents.items():
+                            if st.checkbox(f"{agent_config.name} - {agent_config.role}", 
+                                         value=agent_name in crew_config.selected_agents,
+                                         key=f"edit_crew_agent_{crew_name}_{agent_name}"):
+                                edit_selected_agents.append(agent_name)
+                    else:
+                        st.warning("Aucun agent disponible.")
+                        edit_selected_agents = []
+                    
+                    col1, col2, col3 = st.columns(3)
+                    with col1:
+                        if st.form_submit_button("💾 Sauvegarder", type="primary"):
+                            if edit_crew_name and edit_selected_agents:
+                                # Mettre à jour la configuration
+                                crew_config.name = edit_crew_name
+                                crew_config.description = edit_crew_description
+                                crew_config.selected_agents = edit_selected_agents
+                                
+                                st.session_state.crew_config_manager.update_crew_config(crew_name, crew_config)
+                                st.session_state[f"editing_crew_{crew_name}"] = False
+                                st.success(f"Crew '{edit_crew_name}' modifié avec succès !")
+                                st.rerun()
+                            else:
+                                st.error("Veuillez remplir le nom et sélectionner au moins un agent")
+                    
+                    with col2:
+                        if st.form_submit_button("❌ Annuler"):
+                            st.session_state[f"editing_crew_{crew_name}"] = False
+                            st.rerun()
+                    
+                    with col3:
+                        if st.form_submit_button("🗑️ Supprimer"):
+                            if st.session_state.crew_config_manager.delete_crew(crew_name):
+                                st.session_state[f"editing_crew_{crew_name}"] = False
+                                st.success(f"Crew '{crew_name}' supprimé !")
+                                st.rerun()
+                            else:
+                                st.error("Erreur lors de la suppression")
+    else:
+        st.info("Aucun crew configuré. Créez votre premier crew avec le bouton '➕ Créer un nouveau crew'")
+
+with tab4:
     st.title("📄 Gestion des Documents PDF")
     
     st.write("**Uploadez vos PDFs pour que les agents puissent les utiliser comme sources de connaissances.**")
@@ -293,84 +975,65 @@ with tab2:
         else:
             st.write("Aucun fichier dans le dossier knowledge")
 
-with tab3:
-    st.title("⚙️ Configuration des Agents")
+with tab5:
+    st.title("🔧 Outils et Configuration Avancée")
     
-    agents = st.session_state.config_manager.get_all_agents()
+    # Section de sauvegarde/chargement
+    st.markdown("### 💾 Sauvegarde et Chargement")
     
-    for agent_name, agent_config in agents.items():
-        with st.expander(f"🤖 {agent_config.name}", expanded=False):
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                st.text_input("Rôle", value=agent_config.role, key=f"{agent_name}_role")
-                st.text_area("Objectif", value=agent_config.goal, key=f"{agent_name}_goal", height=100)
-            
-            with col2:
-                st.text_area("Backstory", value=agent_config.backstory, key=f"{agent_name}_backstory", height=100)
-                st.number_input("Max Iterations", value=agent_config.max_iter, min_value=1, max_value=10, key=f"{agent_name}_max_iter")
-            
-            st.checkbox("Verbose", value=agent_config.verbose, key=f"{agent_name}_verbose")
-            st.checkbox("Memory", value=agent_config.memory, key=f"{agent_name}_memory")
-            st.checkbox("Allow Delegation", value=agent_config.allow_delegation, key=f"{agent_name}_delegation")
-            
-            # Configuration des outils pour cet agent
-            available_tools = st.session_state.config_manager.get_available_tools()
-            enabled_tools = []
-            
-            st.write("**Outils disponibles:**")
-            for tool_name, tool_info in available_tools.items():
-                if st.checkbox(
-                    f"{tool_info['name']} - {tool_info['description']}", 
-                    value=tool_name in agent_config.enabled_tools,
-                    key=f"{agent_name}_tool_{tool_name}"
-                ):
-                    enabled_tools.append(tool_name)
-            
-            if st.button(f"💾 Sauvegarder {agent_config.name}", key=f"save_{agent_name}"):
-                # Mettre à jour la configuration
-                agent_config.role = st.session_state[f"{agent_name}_role"]
-                agent_config.goal = st.session_state[f"{agent_name}_goal"]
-                agent_config.backstory = st.session_state[f"{agent_name}_backstory"]
-                agent_config.verbose = st.session_state[f"{agent_name}_verbose"]
-                agent_config.max_iter = st.session_state[f"{agent_name}_max_iter"]
-                agent_config.memory = st.session_state[f"{agent_name}_memory"]
-                agent_config.allow_delegation = st.session_state[f"{agent_name}_delegation"]
-                agent_config.enabled_tools = enabled_tools
-                
-                st.session_state.config_manager.update_agent_config(agent_name, agent_config)
-                st.success(f"Configuration de {agent_config.name} sauvegardée!")
-    
-    # Boutons d'action globaux
     col1, col2, col3 = st.columns(3)
-    with col1:
-        if st.button("🔄 Réinitialiser tout"):
-            st.session_state.config_manager = AgentConfigManager()
-            st.rerun()
     
-    with col2:
-        if st.button("📥 Exporter config"):
-            config = st.session_state.config_manager.export_config()
+    with col1:
+        if st.button("📥 Exporter configuration complète", type="primary"):
+            # Exporter la configuration des agents
+            agents_config = st.session_state.config_manager.export_config()
+            # Exporter la configuration des crews
+            crews_config = st.session_state.crew_config_manager.export_config()
+            
+            # Combiner les configurations
+            full_config = {
+                "agents": agents_config,
+                "crews": crews_config,
+                "version": "1.0"
+            }
+            
             st.download_button(
-                label="Télécharger config.json",
-                data=json.dumps(config, indent=2, ensure_ascii=False),
-                file_name="agent_config.json",
+                label="Télécharger configuration.json",
+                data=json.dumps(full_config, indent=2, ensure_ascii=False),
+                file_name="crewai_configuration.json",
                 mime="application/json"
             )
     
-    with col3:
-        uploaded_file = st.file_uploader("📤 Importer config", type=['json'])
+    with col2:
+        uploaded_file = st.file_uploader("📤 Importer configuration", type=['json'])
         if uploaded_file is not None:
             try:
                 config = json.load(uploaded_file)
-                st.session_state.config_manager.import_config(config)
-                st.success("Configuration importée!")
+                
+                # Importer la configuration des agents
+                if "agents" in config:
+                    st.session_state.config_manager.import_config(config["agents"])
+                
+                # Importer la configuration des crews
+                if "crews" in config:
+                    st.session_state.crew_config_manager.import_config(config["crews"])
+                
+                st.success("Configuration importée avec succès!")
                 st.rerun()
             except Exception as e:
                 st.error(f"Erreur lors de l'import: {e}")
 
-with tab4:
-    st.title("🔧 Configuration des Outils")
+    with col3:
+        if st.button("🔄 Réinitialiser tout", type="secondary"):
+            st.session_state.config_manager = AgentConfigManager()
+            st.session_state.crew_config_manager = CrewConfigManager(st.session_state.config_manager)
+            st.success("Configuration réinitialisée!")
+            st.rerun()
+    
+    st.markdown("---")
+    
+    # Section de configuration des outils
+    st.markdown("### 🔧 Configuration des Outils")
     
     available_tools = get_available_tools()
     

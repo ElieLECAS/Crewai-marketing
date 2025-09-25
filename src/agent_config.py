@@ -23,6 +23,41 @@ class AgentConfigManager:
         self.available_tools = get_available_tools()
         self._init_default_configs()
     
+    def create_new_agent(self, name: str, role: str, goal: str, backstory: str, 
+                        enabled_tools: List[str] = None, verbose: bool = True, 
+                        max_iter: int = 3, memory: bool = False, 
+                        allow_delegation: bool = False) -> str:
+        """Crée un nouvel agent avec un nom unique"""
+        # Générer un nom unique si nécessaire
+        original_name = name
+        counter = 1
+        while name in self.agents_config:
+            name = f"{original_name}_{counter}"
+            counter += 1
+        
+        # Créer la configuration
+        config = AgentConfig(
+            name=name,
+            role=role,
+            goal=goal,
+            backstory=backstory,
+            enabled_tools=enabled_tools or [],
+            verbose=verbose,
+            max_iter=max_iter,
+            memory=memory,
+            allow_delegation=allow_delegation
+        )
+        
+        self.agents_config[name] = config
+        return name
+    
+    def delete_agent(self, agent_name: str) -> bool:
+        """Supprime un agent"""
+        if agent_name in self.agents_config:
+            del self.agents_config[agent_name]
+            return True
+        return False
+    
     def _init_default_configs(self):
         """Initialise les configurations par défaut"""
         default_configs = {
@@ -31,7 +66,7 @@ class AgentConfigManager:
                 role="Meta Agent Manager",
                 goal="Analyser les problématiques marketing, comprendre les besoins spécifiques et créer des tâches dynamiques adaptées pour déléguer aux agents spécialisés.",
                 backstory="Manager stratégique avec une vision globale du marketing digital. Expert en analyse de problématiques complexes et en orchestration d'équipes spécialisées. Capable de décomposer une problématique en tâches concrètes et de les déléguer aux bons experts.",
-                enabled_tools=["serper_search", "pdf_search", "rag_tool"],
+                enabled_tools=[],
                 allow_delegation=True
             ),
             "clara_detective_digitale": AgentConfig(
@@ -39,21 +74,21 @@ class AgentConfigManager:
                 role="Chercheuse Web",
                 goal="Identifier les meilleures idées, repérer les hashtags tendance et collecter des exemples concrets d'actions menées par d'autres entreprises.",
                 backstory="Clara est passionnée par la veille digitale. Depuis ses débuts dans une agence de communication, elle a développé une expertise pour trouver les tendances et bonnes pratiques en ligne. On l'appelle 'l'œil du web' car rien ne lui échappe : actualités, hashtags, campagnes inspirantes.",
-                enabled_tools=["serper_search", "website_search", "scrape_website", "pdf_search", "rag_tool"]
+                enabled_tools=["serper_search", "website_search", "scrape_website"]
             ),
             "julien_analyste_strategique": AgentConfig(
                 name="analyste de contexte",
                 role="Analyste de Contexte",
                 goal="Filtrer les informations collectées et les contextualiser pour l'entreprise spécifique, en identifiant le ton juste et les actions crédibles.",
                 backstory="Julien a travaillé plusieurs années en tant que consultant en RSE (Responsabilité Sociétale des Entreprises). Il adore donner du sens aux données brutes et les adapter au contexte spécifique d'une organisation. Avec un regard humain et pragmatique, il sait traduire une tendance générale en action réaliste et pertinente pour une entreprise donnée.",
-                enabled_tools=["serper_search", "pdf_search", "rag_tool"]
+                enabled_tools=["pdf_search", "rag_tool"]
             ),
             "sophie_plume_solidaire": AgentConfig(
                 name="rédactrice linkedin",
                 role="Rédactrice LinkedIn",
                 goal="Rédiger du contenu engageant, fidèle aux valeurs de l'entreprise, et aligné avec la stratégie marketing définie.",
                 backstory="Sophie est une communicante née. Ancienne journaliste spécialisée dans la communication interne, elle a une sensibilité particulière pour les sujets humains et solidaires. Sa plume est à la fois professionnelle et chaleureuse, capable d'émouvoir tout en valorisant l'entreprise.",
-                enabled_tools=["serper_search", "pdf_search", "rag_tool"]
+                enabled_tools=[]
             )
         }
         

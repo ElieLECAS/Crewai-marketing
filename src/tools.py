@@ -1,5 +1,4 @@
 from crewai_tools import SerperDevTool, WebsiteSearchTool, ScrapeWebsiteTool, PDFSearchTool, RagTool
-from crewai.knowledge.source.pdf_knowledge_source import PDFKnowledgeSource
 from typing import List, Dict, Any
 import os
 
@@ -50,28 +49,37 @@ def get_available_tools() -> Dict[str, Any]:
     return tools
 
 def create_pdf_knowledge_sources(pdf_paths: List[str]) -> List:
-    """Crée des sources de connaissances PDF pour les agents"""
+    """Prépare les PDFs pour les outils CrewAI"""
     knowledge_sources = []
     
     if not pdf_paths:
         print("Aucun PDF fourni pour les sources de connaissances")
         return knowledge_sources
     
-    print(f"📚 Création des sources de connaissances pour {len(pdf_paths)} PDF(s)")
+    print(f"📚 Préparation des PDFs pour les outils CrewAI ({len(pdf_paths)} fichier(s))")
     
-    # Pour l'instant, on retourne une liste vide pour éviter les erreurs de compatibilité
-    # Les agents utiliseront directement les outils PDFSearchTool et RagTool
-    print("💡 Les agents utiliseront les outils PDF natifs de CrewAI (PDFSearchTool, RagTool)")
-    print("📄 PDFs disponibles pour les outils :")
+    # Créer le dossier knowledge s'il n'existe pas
+    knowledge_dir = "knowledge"
+    if not os.path.exists(knowledge_dir):
+        os.makedirs(knowledge_dir)
+        print(f"📁 Dossier {knowledge_dir} créé")
     
+    # Copier les PDFs dans le dossier knowledge
     for pdf_path in pdf_paths:
         if os.path.exists(pdf_path):
-            abs_path = os.path.abspath(pdf_path)
-            print(f"   ✅ {abs_path}")
+            import shutil
+            filename = os.path.basename(pdf_path)
+            dest_path = os.path.join(knowledge_dir, filename)
+            try:
+                shutil.copy2(pdf_path, dest_path)
+                print(f"   ✅ PDF copié: {filename}")
+            except Exception as e:
+                print(f"   ❌ Erreur lors de la copie de {filename}: {e}")
         else:
             print(f"   ⚠️ Fichier non trouvé: {pdf_path}")
     
-    print("🎯 Les outils PDF sont prêts à être utilisés par les agents")
+    print("💡 Les agents utiliseront les outils PDFSearchTool et RagTool pour accéder aux PDFs")
+    print("🎯 Les PDFs sont prêts dans le dossier knowledge/")
     return knowledge_sources
 
 def get_tools_for_agent(agent_name: str, enabled_tools: List[str]) -> List[Any]:

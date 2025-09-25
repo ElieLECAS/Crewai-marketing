@@ -11,9 +11,38 @@ class SequentialTaskManager:
     def __init__(self, config_manager: AgentConfigManager):
         self.config_manager = config_manager
     
-    def create_meta_manager_task(self, problem_statement: str, company_context: str = "") -> Task:
+    def create_meta_manager_task(self, problem_statement: str, company_context: str = "", available_agents: List[str] = None) -> Task:
         """Crée la tâche principale du Meta Agent Manager"""
         meta_agent = create_agent_from_config("meta_manager_agent", self.config_manager)
+        
+        # Construire la liste des agents disponibles dynamiquement
+        if available_agents is None:
+            available_agents = ["clara_detective_digitale", "julien_analyste_strategique", "sophie_plume_solidaire"]
+        
+        # Récupérer les informations complètes des agents
+        agents_info = []
+        for agent_name in available_agents:
+            agent_config = self.config_manager.get_agent_config(agent_name)
+            if agent_config:
+                # Récupérer les outils disponibles
+                available_tools = self.config_manager.get_available_tools()
+                agent_tools = []
+                for tool_name in agent_config.enabled_tools:
+                    if tool_name in available_tools:
+                        agent_tools.append(available_tools[tool_name]["name"])
+                
+                tools_text = ", ".join(agent_tools) if agent_tools else "Aucun outil"
+                
+                agent_info = f"""- **{agent_config.name} ({agent_config.role})**
+  - **Objectif** : {agent_config.goal}
+  - **Backstory** : {agent_config.backstory}
+  - **Outils disponibles** : {tools_text}
+  - **Max Iterations** : {agent_config.max_iter}
+  - **Verbose** : {'Oui' if agent_config.verbose else 'Non'}"""
+                
+                agents_info.append(agent_info)
+        
+        agents_list = "\n\n            ".join(agents_info) if agents_info else "Aucun agent disponible"
         
         return Task(
             description=dedent(f"""
@@ -27,50 +56,60 @@ class SequentialTaskManager:
             
             MISSION IMPORTANTE :
             1. **Analyser la problématique** : Comprendre les enjeux, objectifs et contraintes
-            2. **Créer des tâches spécifiques** : Générer des tâches concrètes et détaillées pour chaque agent
-            3. **Déléguer intelligemment** : Assigner chaque tâche à l'agent le plus approprié
-            4. **Structurer pour transmission** : Préparer les informations pour transmission via le système de context
+            2. **Évaluer les compétences** : Analyser les capacités, outils et spécialisations de chaque agent
+            3. **Déterminer l'ordre optimal** : Choisir l'ordre d'exécution selon la logique de la problématique et les compétences
+            4. **Créer des tâches spécifiques** : Générer des tâches concrètes adaptées aux capacités de chaque agent
+            5. **Déléguer intelligemment** : Assigner chaque tâche à l'agent le plus compétent avec les bons outils
+            6. **Structurer pour transmission** : Préparer les informations pour transmission via le système de context
             
-            AGENTS DISPONIBLES :
-            - **Clara (Détective Digitale)** : Recherche web, veille, hashtags, exemples concrets
-            - **Julien (Analyste Stratégique)** : Analyse contextuelle, filtrage, adaptation au secteur
-            - **Sophie (Plume Solidaire)** : Rédaction LinkedIn, contenu engageant
+            AGENTS DISPONIBLES DANS TON CREW :
+            {agents_list}
             
             FORMAT DE DÉLÉGATION REQUIS :
             Tu dois créer un plan d'action structuré avec :
             
-            ## TÂCHE POUR CLARA :
-            - **Objectif** : [Objectif précis pour Clara]
-            - **Instructions** : [Instructions détaillées]
-            - **Livrables** : [Format et contenu attendus]
-            - **Justification** : [Pourquoi cette tâche]
+            ## ORDRE D'EXÉCUTION RECOMMANDÉ :
+            [Liste les agents dans l'ordre optimal d'exécution avec justification basée sur :
+            - Les compétences spécifiques de chaque agent
+            - Les outils disponibles pour chaque agent
+            - La logique de la problématique
+            - Les dépendances entre les tâches]
             
-            ## TÂCHE POUR JULIEN :
-            - **Objectif** : [Objectif précis pour Julien]
-            - **Instructions** : [Instructions détaillées, basées sur les données de Clara]
+            ## TÂCHES PAR AGENT (dans l'ordre recommandé) :
+            [Pour chaque agent, crée une section avec :]
+            - **Agent assigné** : [Nom et rôle de l'agent]
+            - **Compétences utilisées** : [Quelles compétences spécifiques de l'agent seront utilisées]
+            - **Outils recommandés** : [Quels outils l'agent devrait utiliser]
+            - **Objectif** : [Objectif précis pour cet agent]
+            - **Instructions** : [Instructions détaillées adaptées aux capacités de l'agent]
             - **Livrables** : [Format et contenu attendus]
-            - **Justification** : [Pourquoi cette tâche]
+            - **Justification** : [Pourquoi cet agent est le plus approprié pour cette tâche]
+            - **Dépendances** : [Quels résultats des agents précédents sont nécessaires]
+            - **Ordre d'exécution** : [Position dans la séquence et pourquoi]
             
-            ## TÂCHE POUR SOPHIE :
-            - **Objectif** : [Objectif précis pour Sophie]
-            - **Instructions** : [Instructions détaillées, basées sur les analyses précédentes]
-            - **Livrables** : [Format et contenu attendus]
-            - **Justification** : [Pourquoi cette tâche]
+            IMPORTANT : 
+            - Chaque agent recevra le contexte de tous les agents précédents
+            - Utilise les compétences et outils spécifiques de chaque agent
+            - L'ordre que tu recommandes sera respecté
             
             LIVRABLE :
-            Plan d'action structuré avec les tâches déléguées pour Clara, Julien et Sophie.
+            Plan d'action structuré avec l'ordre d'exécution recommandé et les tâches déléguées pour tous les agents de ton crew.
             """).strip(),
             agent=meta_agent,
-            expected_output="Plan d'action structuré avec les tâches déléguées pour Clara, Julien et Sophie.",
+            expected_output="Plan d'action structuré avec l'ordre d'exécution choisi et les tâches déléguées pour tous les agents de ton crew.",
         )
     
-    def create_clara_task(self, problem_statement: str, company_context: str = "") -> Task:
-        """Crée une tâche pour Clara qui utilise le context du Meta Manager"""
-        clara_agent = create_agent_from_config("clara_detective_digitale", self.config_manager)
+    def create_agent_task(self, agent_name: str, problem_statement: str, company_context: str = "") -> Task:
+        """Crée une tâche dynamique pour un agent spécifique"""
+        agent = create_agent_from_config(agent_name, self.config_manager)
+        agent_config = self.config_manager.get_agent_config(agent_name)
+        
+        if not agent_config:
+            raise ValueError(f"Configuration non trouvée pour l'agent: {agent_name}")
         
         return Task(
             description=dedent(f"""
-            Tu es Clara, la Détective Digitale.
+            Tu es {agent_config.name}, {agent_config.role}.
             
             CONTEXTE :
             Tu vas recevoir via le système de context les instructions du Meta Agent Manager qui a analysé cette problématique :
@@ -79,112 +118,58 @@ class SequentialTaskManager:
             {f"Contexte entreprise : {company_context}" if company_context else ""}
             
             MISSION :
-            1. **Récupère ta tâche** : Dans le context, trouve la section "## TÂCHE POUR CLARA"
-            2. **Exécute précisément** : Accomplis exactement l'objectif défini avec les instructions données
-            3. **Utilise tes outils** : Emploie serper_search, website_search, scrape_website selon tes besoins
-            4. **Respecte le format** : Livre le résultat selon le format demandé
+            1. **Récupère ta tâche** : Dans le context, trouve la section "## TÂCHE POUR {agent_config.name.upper()}"
+            2. **Comprends l'ordre** : Le Meta Manager a défini un ordre d'exécution optimal - respecte-le
+            3. **Utilise les dépendances** : Si des agents ont travaillé avant toi, utilise leurs résultats
+            4. **Exécute précisément** : Accomplis exactement l'objectif défini avec les instructions données
+            5. **Utilise tes outils** : Emploie tes outils selon tes besoins
+            6. **Respecte le format** : Livre le résultat selon le format demandé
             
-            IMPORTANT : Exécute uniquement ce qui t'est demandé dans ta section du context, ni plus ni moins.
+            IMPORTANT : 
+            - Exécute uniquement ce qui t'est demandé dans ta section du context
+            - Respecte l'ordre d'exécution défini par le Meta Manager
+            - Utilise les résultats des agents précédents si disponibles
             
             LIVRABLE :
             Résultat conforme aux spécifications reçues via le context du Meta Manager.
             """).strip(),
-            agent=clara_agent,
+            agent=agent,
             expected_output="Résultat conforme aux spécifications reçues via le context du Meta Manager.",
         )
     
-    def create_julien_task(self, problem_statement: str, company_context: str = "") -> Task:
-        """Crée une tâche pour Julien qui utilise le context du Meta Manager et les résultats de Clara"""
-        julien_agent = create_agent_from_config("julien_analyste_strategique", self.config_manager)
-        
-        return Task(
-            description=dedent(f"""
-            Tu es Julien, l'Analyste Stratégique.
-            
-            CONTEXTE :
-            Tu vas recevoir via le système de context :
-            1. **Instructions du Meta Manager** : Section "## TÂCHE POUR JULIEN" avec tes objectifs
-            2. **Données de Clara** : Les résultats de ses recherches pour cette problématique : {problem_statement}
-            
-            {f"Contexte entreprise : {company_context}" if company_context else ""}
-            
-            MISSION :
-            1. **Récupère ta tâche** : Dans le context, trouve la section "## TÂCHE POUR JULIEN"
-            2. **Analyse les données de Clara** : Utilise ses résultats comme base de travail
-            3. **Exécute ton analyse** : Accomplis précisément l'objectif défini
-            4. **Respecte le format** : Livre le résultat selon le format demandé
-            
-            IMPORTANT : Combine les données de Clara avec ta propre analyse selon les instructions du Meta Manager.
-            
-            LIVRABLE :
-            Résultat d'analyse conforme aux spécifications reçues via le context, enrichi des données de Clara.
-            """).strip(),
-            agent=julien_agent,
-            expected_output="Résultat d'analyse conforme aux spécifications reçues via le context, enrichi des données de Clara.",
-        )
     
-    def create_sophie_task(self, problem_statement: str, company_context: str = "") -> Task:
-        """Crée une tâche pour Sophie qui utilise le context de tous les agents précédents"""
-        sophie_agent = create_agent_from_config("sophie_plume_solidaire", self.config_manager)
-        
-        return Task(
-            description=dedent(f"""
-            Tu es Sophie, la Plume Solidaire.
-            
-            CONTEXTE :
-            Tu vas recevoir via le système de context :
-            1. **Instructions du Meta Manager** : Section "## TÂCHE POUR SOPHIE" avec tes objectifs
-            2. **Données de Clara** : Les recherches et informations qu'elle a collectées
-            3. **Analyse de Julien** : Son analyse stratégique et contextualisée
-            
-            Tout ceci pour cette problématique : {problem_statement}
-            {f"Contexte entreprise : {company_context}" if company_context else ""}
-            
-            MISSION :
-            1. **Récupère ta tâche** : Dans le context, trouve la section "## TÂCHE POUR SOPHIE"
-            2. **Synthétise les inputs** : Utilise les données de Clara et l'analyse de Julien
-            3. **Exécute ta rédaction** : Accomplis précisément l'objectif défini
-            4. **Respecte le format** : Livre le résultat selon le format demandé
-            
-            IMPORTANT : Crée un contenu final qui combine intelligemment tous les éléments transmis via le context.
-            
-            LIVRABLE :
-            Contenu final conforme aux spécifications reçues via le context, synthétisant le travail de toute l'équipe.
-            """).strip(),
-            agent=sophie_agent,
-            expected_output="Contenu final conforme aux spécifications reçues via le context, synthétisant le travail de toute l'équipe.",
-        )
-    
-    def create_sequential_tasks(self, problem_statement: str, company_context: str = "") -> List[Task]:
+    def create_sequential_tasks(self, problem_statement: str, company_context: str = "", available_agents: List[str] = None) -> List[Task]:
         """Crée un ensemble de tâches séquentielles avec transmission des résultats via le système de context"""
         tasks = []
         
-        # Tâche 1: Meta Manager - Analyse et délégation
-        meta_task = self.create_meta_manager_task(problem_statement, company_context)
+        # Utiliser les agents par défaut si aucun n'est fourni
+        if available_agents is None:
+            available_agents = ["clara_detective_digitale", "julien_analyste_strategique", "sophie_plume_solidaire"]
+        
+        # Tâche 1: Meta Manager - Analyse et délégation (avec choix de l'ordre)
+        meta_task = self.create_meta_manager_task(problem_statement, company_context, available_agents)
         tasks.append(meta_task)
         
-        # Tâche 2: Clara - Reçoit le context du Meta Manager
-        clara_task = self.create_clara_task(problem_statement, company_context)
-        clara_task.context = [meta_task]  # Clara reçoit le résultat du Meta Manager
-        tasks.append(clara_task)
+        # Tâches pour chaque agent du crew dans l'ordre choisi par le Meta Manager
+        # Le Meta Manager décidera de l'ordre optimal dans sa tâche
+        previous_tasks = [meta_task]  # Tous les agents reçoivent le contexte du Meta Manager
         
-        # Tâche 3: Julien - Reçoit le context du Meta Manager ET de Clara
-        julien_task = self.create_julien_task(problem_statement, company_context)
-        julien_task.context = [meta_task, clara_task]  # Julien reçoit les résultats du Meta Manager et de Clara
-        tasks.append(julien_task)
-        
-        # Tâche 4: Sophie - Reçoit le context de TOUS les agents précédents
-        sophie_task = self.create_sophie_task(problem_statement, company_context)
-        sophie_task.context = [meta_task, clara_task, julien_task]  # Sophie reçoit tous les résultats précédents
-        tasks.append(sophie_task)
+        for agent_name in available_agents:
+            # Vérifier que l'agent existe
+            if self.config_manager.get_agent_config(agent_name):
+                agent_task = self.create_agent_task(agent_name, problem_statement, company_context)
+                agent_task.context = previous_tasks.copy()  # L'agent reçoit le contexte de tous les agents précédents
+                tasks.append(agent_task)
+                previous_tasks.append(agent_task)  # Ajouter cette tâche au contexte pour les suivantes
         
         return tasks
 
 
-def create_sequential_tasks_from_problem(problem_statement: str, company_context: str = "", config_manager: AgentConfigManager = None) -> List[Task]:
+def create_sequential_tasks_from_problem(problem_statement: str, company_context: str = "", config_manager: AgentConfigManager = None, available_agents: List[str] = None) -> List[Task]:
     """Fonction utilitaire pour créer des tâches séquentielles à partir d'une problématique"""
     if config_manager is None:
         config_manager = AgentConfigManager()
     
     task_manager = SequentialTaskManager(config_manager)
-    return task_manager.create_sequential_tasks(problem_statement, company_context)
+    return task_manager.create_sequential_tasks(problem_statement, company_context, available_agents)
+
