@@ -9,6 +9,8 @@ class CrewConfig:
     description: str
     selected_agents: List[str]  # Noms des agents sélectionnés
     process_type: str = "sequential"  # sequential, hierarchical, etc.
+    # Optionnel: tâches préconfigurées (souvent gérées dynamiquement ailleurs)
+    tasks: List[str] = None
 
 class CrewConfigManager:
     """Gestionnaire de configuration des crews"""

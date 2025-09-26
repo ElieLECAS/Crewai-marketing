@@ -1,6 +1,7 @@
 import os
 import streamlit as st
 import json
+import pandas as pd
 from dotenv import load_dotenv
 from rich.console import Console
 from src.crew import build_dynamic_marketing_crew, build_two_phase_marketing_crew, build_ordered_crew_from_meta_result
@@ -413,12 +414,13 @@ def display_generated_posts(result):
     display_parsed_result(result)
 
 # Navigation
-tab1, tab2, tab3, tab4, tab5 = st.tabs([
+tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
     "🎯 Campagne", 
     "🤖 Gestion Agents", 
     "👥 Gestion Crews", 
     "📄 Documents PDF", 
-    "🔧 Outils"
+    "🔧 Outils",
+    "📊 Outputs Agents"
 ])
 
 with tab1:
@@ -546,6 +548,9 @@ with tab1:
                     
                     # Combiner les résultats
                     result = f"{meta_result}\n\n---\n\nRÉSULTATS DES AGENTS:\n\n{agents_result}"
+                    
+                    # Sauvegarder le résultat dans la session state pour l'onglet Outputs Agents
+                    st.session_state.last_campaign_result = result
                     
                 except Exception as e:
                     st.error(f"❌ Erreur lors de l'exécution du crew : {str(e)}")
@@ -1140,3 +1145,204 @@ OPENAI_API_KEY=sk-...
 SERPER_API_KEY=...  # Optionnel pour recherche web
 OPENAI_MODEL=gpt-4o-mini
     """)
+
+with tab6:
+    st.title("📊 Outputs des Agents")
+    
+    # Initialiser la session state pour stocker les outputs des agents
+    if 'agent_outputs' not in st.session_state:
+        st.session_state.agent_outputs = {}
+    
+    if 'last_campaign_result' not in st.session_state:
+        st.session_state.last_campaign_result = None
+    
+    # Section pour afficher les outputs de la dernière campagne
+    st.markdown("### 🎯 Dernière campagne exécutée")
+    
+    if st.session_state.last_campaign_result:
+        st.success("✅ Dernière campagne disponible")
+        
+        # Parser le résultat pour extraire les outputs par agent
+        result_str = str(st.session_state.last_campaign_result)
+        
+        # Diviser le résultat en sections par agent
+        agent_sections = {}
+        current_agent = None
+        current_content = []
+        
+        lines = result_str.split('\n')
+        for line in lines:
+            line = line.strip()
+            
+            # Détecter les sections d'agents
+            if any(agent_name in line.lower() for agent_name in ['clara', 'julien', 'sophie', 'meta manager', 'meta agent']):
+                # Sauvegarder le contenu précédent
+                if current_agent and current_content:
+                    agent_sections[current_agent] = '\n'.join(current_content)
+                
+                # Nouvelle section d'agent
+                current_agent = line
+                current_content = [line]
+            elif current_agent and line:
+                current_content.append(line)
+        
+        # Sauvegarder la dernière section
+        if current_agent and current_content:
+            agent_sections[current_agent] = '\n'.join(current_content)
+        
+        # Afficher les outputs par agent
+        if agent_sections:
+            st.markdown("### 📋 Outputs par agent")
+            
+            # Créer des onglets pour chaque agent
+            agent_tabs = st.tabs(list(agent_sections.keys()))
+            
+            for i, (agent_name, content) in enumerate(agent_sections.items()):
+                with agent_tabs[i]:
+                    st.markdown(f"#### 🤖 {agent_name}")
+                    
+                    # Afficher le contenu avec formatage
+                    st.markdown(content)
+                    
+                    # Boutons d'action pour cet agent
+                    col1, col2, col3 = st.columns(3)
+                    
+                    with col1:
+                        if st.button(f"📋 Copier output {agent_name}", key=f"copy_{agent_name}"):
+                            st.code(content, language="text")
+                            st.success("Output affiché ci-dessus - vous pouvez le copier !")
+                    
+                    with col2:
+                        if st.button(f"📥 Télécharger {agent_name}", key=f"download_{agent_name}"):
+                            st.download_button(
+                                label=f"Télécharger output {agent_name}",
+                                data=content,
+                                file_name=f"output_{agent_name.lower().replace(' ', '_')}.txt",
+                                mime="text/plain"
+                            )
+                    
+                    with col3:
+                        if st.button(f"💾 Sauvegarder {agent_name}", key=f"save_{agent_name}"):
+                            st.session_state.agent_outputs[agent_name] = content
+                            st.success(f"Output de {agent_name} sauvegardé !")
+        
+        # Section pour les outputs sauvegardés
+        if st.session_state.agent_outputs:
+            st.markdown("---")
+            st.markdown("### 💾 Outputs sauvegardés")
+            
+            for agent_name, content in st.session_state.agent_outputs.items():
+                with st.expander(f"🤖 {agent_name}", expanded=False):
+                    st.markdown(content)
+                    
+                    # Boutons d'action pour les outputs sauvegardés
+                    col1, col2 = st.columns(2)
+                    
+                    with col1:
+                        if st.button(f"📋 Copier {agent_name}", key=f"copy_saved_{agent_name}"):
+                            st.code(content, language="text")
+                            st.success("Output affiché ci-dessus - vous pouvez le copier !")
+                    
+                    with col2:
+                        if st.button(f"🗑️ Supprimer {agent_name}", key=f"delete_saved_{agent_name}"):
+                            del st.session_state.agent_outputs[agent_name]
+                            st.success(f"Output de {agent_name} supprimé !")
+                            st.rerun()
+            
+            # Bouton pour vider tous les outputs sauvegardés
+            if st.button("🗑️ Vider tous les outputs sauvegardés", type="secondary"):
+                st.session_state.agent_outputs = {}
+                st.success("Tous les outputs sauvegardés ont été supprimés !")
+                st.rerun()
+    
+    else:
+        st.info("💡 Aucune campagne exécutée récemment. Lancez une campagne dans l'onglet '🎯 Campagne' pour voir les outputs des agents.")
+    
+    # Section pour analyser les outputs
+    st.markdown("---")
+    st.markdown("### 🔍 Analyse des outputs")
+    
+    if st.session_state.agent_outputs:
+        # Statistiques des outputs
+        st.markdown("#### 📊 Statistiques")
+        
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            st.metric("Agents avec outputs", len(st.session_state.agent_outputs))
+        
+        with col2:
+            total_chars = sum(len(content) for content in st.session_state.agent_outputs.values())
+            st.metric("Total de caractères", f"{total_chars:,}")
+        
+        with col3:
+            avg_chars = total_chars // len(st.session_state.agent_outputs) if st.session_state.agent_outputs else 0
+            st.metric("Moyenne par agent", f"{avg_chars:,}")
+        
+        # Recherche dans les outputs
+        st.markdown("#### 🔍 Recherche dans les outputs")
+        search_term = st.text_input("Rechercher un terme dans les outputs", placeholder="Ex: LinkedIn, stratégie, RSE...")
+        
+        if search_term:
+            matching_agents = []
+            for agent_name, content in st.session_state.agent_outputs.items():
+                if search_term.lower() in content.lower():
+                    matching_agents.append((agent_name, content))
+            
+            if matching_agents:
+                st.success(f"✅ {len(matching_agents)} agent(s) trouvé(s) avec le terme '{search_term}'")
+                
+                for agent_name, content in matching_agents:
+                    with st.expander(f"🤖 {agent_name} - Résultats pour '{search_term}'", expanded=False):
+                        # Mettre en évidence le terme recherché
+                        highlighted_content = content.replace(
+                            search_term, 
+                            f"**{search_term}**"
+                        )
+                        st.markdown(highlighted_content)
+            else:
+                st.warning(f"❌ Aucun agent trouvé avec le terme '{search_term}'")
+    
+    # Section pour exporter tous les outputs
+    st.markdown("---")
+    st.markdown("### 📤 Export des outputs")
+    
+    if st.session_state.agent_outputs:
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            if st.button("📥 Exporter tous les outputs", type="primary"):
+                # Créer un rapport complet
+                export_content = []
+                export_content.append("=== OUTPUTS DES AGENTS ===\n")
+                
+                for agent_name, content in st.session_state.agent_outputs.items():
+                    export_content.append(f"--- {agent_name} ---")
+                    export_content.append(content)
+                    export_content.append("\n")
+                
+                export_text = "\n".join(export_content)
+                st.download_button(
+                    label="Télécharger tous les outputs",
+                    data=export_text,
+                    file_name="outputs_agents_complet.txt",
+                    mime="text/plain"
+                )
+        
+        with col2:
+            if st.button("📊 Exporter en JSON", type="secondary"):
+                import json
+                json_data = {
+                    "timestamp": str(pd.Timestamp.now()),
+                    "agent_outputs": st.session_state.agent_outputs,
+                    "total_agents": len(st.session_state.agent_outputs)
+                }
+                
+                st.download_button(
+                    label="Télécharger en JSON",
+                    data=json.dumps(json_data, indent=2, ensure_ascii=False),
+                    file_name="outputs_agents.json",
+                    mime="application/json"
+                )
+    else:
+        st.info("💡 Aucun output sauvegardé. Sauvegardez des outputs d'agents pour pouvoir les exporter.")

@@ -32,11 +32,10 @@ def create_agent_from_config(agent_name: str, config_manager: AgentConfigManager
 def create_all_agents(config_manager: AgentConfigManager, pdf_paths: List[str] = None) -> dict:
     """Crée tous les agents à partir de leur configuration"""
     agents = {}
-    agent_names = ["meta_manager_agent", "clara_detective_digitale", "julien_analyste_strategique", "sophie_plume_solidaire"]
-    
-    for agent_name in agent_names:
+    # Utiliser dynamiquement tous les agents connus du config manager
+    all_agent_names = list(config_manager.get_all_agents().keys())
+    for agent_name in all_agent_names:
         agents[agent_name] = create_agent_from_config(agent_name, config_manager, pdf_paths)
-    
     return agents
 
 # Fonction de compatibilité pour l'ancien code

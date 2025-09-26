@@ -1,8 +1,9 @@
-from crewai import Task
+from crewai import Task, Crew, Process
 from textwrap import dedent
 from typing import Dict, List, Optional
 import os
 import re
+import json
 from .agents import create_agent_from_config
 from .agent_config import AgentConfigManager
 
@@ -86,7 +87,8 @@ class SequentialTaskManager:
         
         # Construire la liste des agents disponibles dynamiquement
         if available_agents is None:
-            available_agents = ["clara_detective_digitale", "julien_analyste_strategique", "sophie_plume_solidaire"]
+            # Tous les agents sauf le méta
+            available_agents = [name for name in self.config_manager.get_all_agents().keys() if name != "meta_manager_agent"]
         
         # Vérifier les PDFs disponibles
         from .tools import get_available_pdfs
@@ -266,7 +268,7 @@ class SequentialTaskManager:
         
         # Utiliser les agents par défaut si aucun n'est fourni
         if available_agents is None:
-            available_agents = ["clara_detective_digitale", "julien_analyste_strategique", "sophie_plume_solidaire"]
+            available_agents = [name for name in self.config_manager.get_all_agents().keys() if name != "meta_manager_agent"]
         
         # Tâche 1: Meta Manager - Analyse et délégation (avec choix de l'ordre)
         meta_task = self.create_meta_manager_task(problem_statement, company_context, available_agents)
@@ -297,7 +299,7 @@ class SequentialTaskManager:
         
         # Utiliser les agents par défaut si aucun n'est fourni
         if available_agents is None:
-            available_agents = ["clara_detective_digitale", "julien_analyste_strategique", "sophie_plume_solidaire"]
+            available_agents = [name for name in self.config_manager.get_all_agents().keys() if name != "meta_manager_agent"]
         
         # Si on a le résultat du Meta Manager, déterminer l'ordre recommandé
         if meta_manager_result:
@@ -317,7 +319,342 @@ class SequentialTaskManager:
                 previous_tasks.append(agent_task)  # Ajouter cette tâche au contexte pour les suivantes
         
         return tasks
-
+    
+    def create_meta_manager_with_json_plan(self, problem_statement: str, company_context: str = "", available_agents: List[str] = None) -> Task:
+        """Crée la tâche du Meta Manager qui génère un plan JSON structuré"""
+        meta_agent = create_agent_from_config("meta_manager_agent", self.config_manager)
+        
+        if available_agents is None:
+            available_agents = [name for name in self.config_manager.get_all_agents().keys() if name != "meta_manager_agent"]
+        
+        # Informations sur les agents disponibles
+        agents_info = []
+        for agent_name in available_agents:
+            agent_config = self.config_manager.get_agent_config(agent_name)
+            if agent_config:
+                available_tools = self.config_manager.get_available_tools()
+                agent_tools = []
+                for tool_name in agent_config.enabled_tools:
+                    if tool_name in available_tools:
+                        agent_tools.append(available_tools[tool_name]["name"])
+                
+                agents_info.append({
+                    "name": agent_name,
+                    "role": agent_config.role,
+                    "goal": agent_config.goal,
+                    "tools": agent_tools,
+                    "max_iter": agent_config.max_iter
+                })
+        
+        # Vérifier les PDFs disponibles
+        from .tools import get_available_pdfs
+        pdf_files = get_available_pdfs()
+        pdf_context = ""
+        if pdf_files:
+            pdf_context = f"""
+        
+        📚 SOURCES DE CONNAISSANCES DISPONIBLES :
+        {len(pdf_files)} fichier(s) PDF disponible(s) dans le dossier knowledge/ :
+        {chr(10).join([f"- {os.path.basename(pdf)}" for pdf in pdf_files])}
+        Les agents avec outils PDF peuvent utiliser ces documents pour enrichir leurs réponses."""
+        
+        return Task(
+            description=dedent(f"""
+            Tu es le Meta Agent Manager. Tu dois analyser cette problématique et créer un plan JSON structuré 
+            pour orchestrer une équipe d'agents spécialisés.
+            
+            PROBLÉMATIQUE À RÉSOUDRE :
+            {problem_statement}
+            
+            CONTEXTE ENTREPRISE :
+            {company_context if company_context else "Aucun contexte spécifique fourni"}{pdf_context}
+            
+            AGENTS DISPONIBLES DANS TON CREW :
+            {chr(10).join([f"- {agent['name']} ({agent['role']}) - Outils: {', '.join(agent['tools']) if agent['tools'] else 'Aucun'}" for agent in agents_info])}
+            
+            MISSION CRITIQUE :
+            1. **Analyser en profondeur** la problématique et identifier les enjeux clés
+            2. **Déterminer l'ordre optimal** d'exécution des agents selon la logique métier
+            3. **Choisir le type de processus** : séquentiel (une tâche après l'autre) ou asynchrone (en parallèle)
+            4. **Créer des tâches spécifiques** pour chaque agent avec des instructions détaillées
+            5. **Définir les dépendances** entre les tâches et le contexte nécessaire
+            6. **Générer un plan JSON** structuré et exécutable
+            
+            CHOIX DU PROCESSUS D'EXÉCUTION :
+            - **SÉQUENTIEL** : Utilise quand les tâches dépendent les unes des autres (ex: recherche → analyse → rédaction)
+            - **ASYNCHRONE** : Utilise quand les tâches peuvent être faites en parallèle (ex: plusieurs recherches indépendantes)
+            
+            FORMAT DE SORTIE OBLIGATOIRE (JSON valide) :
+            {{
+                "execution_type": "sequential" ou "async",
+                "execution_order": ["agent1", "agent2", "agent3"],
+                "problem_analysis": {{
+                    "main_objective": "Objectif principal clairement défini",
+                    "key_challenges": ["Défi 1", "Défi 2", "Défi 3"],
+                    "target_audience": "Audience cible identifiée",
+                    "execution_rationale": "Pourquoi ce type d'exécution (sequential/async)"
+                }},
+                "tasks": {{
+                    "nom_agent_technique": {{
+                        "description": "Description détaillée de la tâche spécifique à cet agent, adaptée à ses compétences et outils.",
+                        "expected_output": "Format et contenu exact du livrable attendu, avec structure claire.",
+                        "dependencies": ["agent_précédent"] ou [],
+                        "tools_to_use": ["outil1", "outil2"],
+                        "context_needed": "Description du contexte nécessaire des agents précédents",
+                        "priority": 1,
+                        "estimated_duration": "X-Y minutes",
+                        "can_run_parallel": true ou false
+                    }}
+                }},
+                "crew_configuration": {{
+                    "process_type": "sequential" ou "async",
+                    "total_estimated_duration": "X-Y minutes",
+                    "success_criteria": "Critères de succès clairs et mesurables",
+                    "coordination_strategy": "Comment les agents se coordonnent (si async)"
+                }}
+            }}
+            
+            RÈGLES IMPORTANTES :
+            - execution_type et process_type doivent être cohérents
+            - Si "async", assure-toi que les tâches peuvent vraiment être parallélisées
+            - Si "sequential", respecte l'ordre logique des dépendances
+            - Chaque tâche doit être spécifiquement adaptée aux compétences de l'agent assigné
+            - Le JSON doit être valide et parsable
+            - Utilise les noms techniques des agents (ex: "clara_detective_digitale")
+            
+            LIVRABLE :
+            Plan JSON structuré et exécutable pour orchestrer l'équipe d'agents avec le bon type d'exécution.
+            """).strip(),
+            agent=meta_agent,
+            expected_output="Plan JSON structuré et valide pour créer les Task CrewAI dynamiquement avec choix du processus d'exécution."
+        )
+    
+    def parse_json_plan_and_create_tasks(self, json_plan: str, problem_statement: str, company_context: str = "", pdf_paths: List[str] = None) -> tuple[List[Task], str]:
+        """Parse le plan JSON du Meta Manager et crée les vraies Task CrewAI
+        
+        Returns:
+            tuple: (tasks, process_type) où process_type est "sequential" ou "async"
+        """
+        
+        # Extraire le JSON du résultat (gérer les cas où il y a du texte avant/après)
+        json_match = re.search(r'\{.*\}', json_plan, re.DOTALL)
+        if not json_match:
+            raise ValueError("❌ Aucun plan JSON valide trouvé dans le résultat du Meta Manager")
+        
+        try:
+            plan = json.loads(json_match.group(0))
+        except json.JSONDecodeError as e:
+            raise ValueError(f"❌ Erreur de parsing JSON : {e}")
+        
+        # Valider la structure du plan
+        required_keys = ["execution_order", "tasks", "crew_configuration"]
+        for key in required_keys:
+            if key not in plan:
+                raise ValueError(f"❌ Clé manquante dans le plan : {key}")
+        
+        # Déterminer le type de processus
+        process_type = plan.get("execution_type", "sequential")
+        if process_type not in ["sequential", "async"]:
+            print(f"⚠️ Type d'exécution non reconnu '{process_type}', utilisation de 'sequential'")
+            process_type = "sequential"
+        
+        tasks = []
+        previous_tasks = []
+        
+        print(f"🔄 Création des tâches selon l'ordre : {plan['execution_order']}")
+        print(f"⚙️ Type d'exécution choisi par le Meta Manager : {process_type}")
+        
+        if process_type == "sequential":
+            # Exécution séquentielle : chaque tâche dépend des précédentes
+            for agent_name in plan["execution_order"]:
+                if agent_name not in plan["tasks"]:
+                    print(f"⚠️ Aucune tâche définie pour l'agent {agent_name}")
+                    continue
+                
+                task = self._create_single_task(agent_name, plan["tasks"][agent_name], 
+                                               problem_statement, company_context, 
+                                               pdf_paths, previous_tasks)
+                if task:
+                    tasks.append(task)
+                    previous_tasks.append(task)
+        else:
+            # Exécution asynchrone : créer les tâches avec dépendances définies
+            for agent_name in plan["execution_order"]:
+                if agent_name not in plan["tasks"]:
+                    print(f"⚠️ Aucune tâche définie pour l'agent {agent_name}")
+                    continue
+                
+                task_info = plan["tasks"][agent_name]
+                
+                # Pour l'async, construire le contexte basé sur les dépendances explicites
+                dependency_tasks = []
+                if task_info.get("dependencies"):
+                    for dep_agent in task_info["dependencies"]:
+                        # Trouver la tâche correspondante
+                        for existing_task in tasks:
+                            if existing_task.agent.role and dep_agent in existing_task.agent.role.lower():
+                                dependency_tasks.append(existing_task)
+                                break
+                
+                task = self._create_single_task(agent_name, task_info, 
+                                               problem_statement, company_context, 
+                                               pdf_paths, dependency_tasks)
+                if task:
+                    tasks.append(task)
+        
+        print(f"🎯 {len(tasks)} tâche(s) créée(s) avec succès en mode {process_type}")
+        return tasks, process_type
+    
+    def _create_single_task(self, agent_name: str, task_info: dict, problem_statement: str, 
+                           company_context: str, pdf_paths: List[str], context_tasks: List[Task]) -> Optional[Task]:
+        """Crée une seule tâche pour un agent donné"""
+        
+        # Vérifier que l'agent existe dans la configuration
+        if not self.config_manager.get_agent_config(agent_name):
+            print(f"⚠️ Agent {agent_name} non trouvé dans la configuration")
+            return None
+        
+        # Créer l'agent
+        try:
+            agent = create_agent_from_config(agent_name, self.config_manager, pdf_paths)
+        except Exception as e:
+            print(f"❌ Erreur création agent {agent_name}: {e}")
+            return None
+        
+        # Construire la description enrichie avec le contexte
+        enriched_description = self._build_enriched_task_description(
+            task_info, problem_statement, company_context, context_tasks
+        )
+        
+        # Créer la Task avec les informations du plan
+        task = Task(
+            description=enriched_description,
+            expected_output=task_info["expected_output"],
+            agent=agent,
+            context=context_tasks.copy()  # Contexte des tâches dépendantes
+        )
+        
+        print(f"✅ Tâche créée pour {agent_name} (priorité {task_info.get('priority', 'N/A')}, parallèle: {task_info.get('can_run_parallel', 'N/A')})")
+        return task
+    
+    def _build_enriched_task_description(self, task_info: dict, problem_statement: str, 
+                                        company_context: str, previous_tasks: List[Task]) -> str:
+        """Construit une description de tâche enrichie avec le contexte"""
+        
+        # Contexte des tâches précédentes/dépendantes
+        context_info = ""
+        if previous_tasks:
+            context_info = f"""
+            
+            CONTEXTE DES TÂCHES DÉPENDANTES :
+            Tu as accès aux résultats des agents suivants via le système de contexte CrewAI :
+            {chr(10).join([f"- {i+1}. {task.agent.role}" for i, task in enumerate(previous_tasks)])}
+            
+            Utilise ces résultats pour enrichir ton travail et assurer la cohérence de l'ensemble.
+            """
+        
+        # Dépendances spécifiques
+        dependencies_info = ""
+        if task_info.get("dependencies"):
+            dependencies_info = f"""
+            
+            DÉPENDANCES SPÉCIFIQUES :
+            Cette tâche dépend des résultats de : {', '.join(task_info['dependencies'])}
+            Assure-toi de bien utiliser ces informations dans ton travail.
+            """
+        
+        # Outils recommandés
+        tools_info = ""
+        if task_info.get("tools_to_use"):
+            tools_info = f"""
+            
+            OUTILS RECOMMANDÉS PAR LE META MANAGER :
+            {', '.join(task_info['tools_to_use'])}
+            Utilise ces outils selon tes besoins pour accomplir ta mission optimalement.
+            """
+        
+        # Information sur l'exécution parallèle
+        parallel_info = ""
+        if task_info.get("can_run_parallel"):
+            parallel_info = f"""
+            
+            EXÉCUTION PARALLÈLE :
+            Cette tâche peut être exécutée en parallèle avec d'autres tâches.
+            Coordonne-toi efficacement avec les autres agents si nécessaire.
+            """
+        
+        return dedent(f"""
+        {task_info['description']}
+        
+        PROBLÉMATIQUE INITIALE :
+        {problem_statement}
+        
+        {f"CONTEXTE ENTREPRISE : {company_context}" if company_context else ""}
+        {context_info}
+        {dependencies_info}
+        {tools_info}
+        {parallel_info}
+        
+        CONTEXTE NÉCESSAIRE : {task_info.get('context_needed', 'Aucun contexte spécifique requis')}
+        DURÉE ESTIMÉE : {task_info.get('estimated_duration', 'Non spécifiée')}
+        PRIORITÉ : {task_info.get('priority', 'Non spécifiée')}
+        """).strip()
+    
+    def create_dynamic_crew_with_json_plan(self, problem_statement: str, company_context: str = "", 
+                                          pdf_paths: List[str] = None, selected_agents: List[str] = None) -> Crew:
+        """Crée un crew complet où le Meta Manager génère un plan JSON pour créer les vraies Task"""
+        
+        if selected_agents is None:
+            selected_agents = [name for name in self.config_manager.get_all_agents().keys() if name != "meta_manager_agent"]
+        
+        # 1. Créer et exécuter le Meta Manager
+        print("🧠 Phase 1: Exécution du Meta Manager...")
+        meta_task = self.create_meta_manager_with_json_plan(problem_statement, company_context, selected_agents)
+        
+        meta_agent = create_agent_from_config("meta_manager_agent", self.config_manager, pdf_paths)
+        meta_crew = Crew(
+            agents=[meta_agent],
+            tasks=[meta_task],
+            process=Process.sequential,
+            verbose=True
+        )
+        
+        # Exécuter le Meta Manager
+        meta_result = meta_crew.kickoff()
+        print("✅ Meta Manager terminé")
+        
+        # 2. Parser le résultat et créer les vraies Task
+        print("🔄 Phase 2: Création des tâches dynamiques...")
+        dynamic_tasks, process_type = self.parse_json_plan_and_create_tasks(
+            meta_result, problem_statement, company_context, pdf_paths
+        )
+        
+        if not dynamic_tasks:
+            raise ValueError("❌ Aucune tâche créée - vérifiez le plan du Meta Manager")
+        
+        # 3. Créer les agents pour les tâches dynamiques
+        dynamic_agents = []
+        for task in dynamic_tasks:
+            # L'agent est déjà créé dans la tâche
+            dynamic_agents.append(task.agent)
+        
+        # 4. Déterminer le type de processus CrewAI
+        crew_process = Process.sequential
+        if process_type == "async":
+            # CrewAI n'a pas de Process.async, on utilise hierarchical pour permettre plus de parallélisme
+            crew_process = Process.hierarchical
+            print("📋 Utilisation du processus hierarchical (le plus proche de l'asynchrone)")
+        else:
+            print("📋 Utilisation du processus sequential")
+        
+        # 5. Créer le crew final avec les vraies Task
+        print("🎯 Phase 3: Création du crew final...")
+        return Crew(
+            agents=dynamic_agents,
+            tasks=dynamic_tasks,
+            process=crew_process,
+            verbose=True
+        )
 
 def create_sequential_tasks_from_problem(problem_statement: str, company_context: str = "", config_manager: AgentConfigManager = None, available_agents: List[str] = None) -> List[Task]:
     """Fonction utilitaire pour créer des tâches séquentielles à partir d'une problématique"""

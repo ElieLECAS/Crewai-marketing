@@ -10,9 +10,9 @@ def build_dynamic_marketing_crew(problem_statement: str, company_context: str = 
     if config_manager is None:
         config_manager = AgentConfigManager()
     
-    # Utiliser les agents par défaut si aucun n'est fourni
+    # Si aucun ensemble fourni, utiliser tous les agents disponibles
     if selected_agents is None:
-        selected_agents = ["meta_manager_agent", "clara_detective_digitale", "julien_analyste_strategique", "sophie_plume_solidaire"]
+        selected_agents = list(config_manager.get_all_agents().keys())
     
     # Créer les agents sélectionnés avec leur configuration et les PDFs
     agents = {}
@@ -62,6 +62,35 @@ def build_two_phase_marketing_crew(problem_statement: str, company_context: str 
     )
     
     return meta_crew, task_manager, available_agents
+
+def build_crew_with_json_plan(problem_statement: str, company_context: str = "", config_manager: AgentConfigManager = None, pdf_paths: List[str] = None, selected_agents: List[str] = None) -> Crew:
+    """Construit un crew où le Meta Manager génère un plan JSON pour créer les vraies Task CrewAI
+    
+    Args:
+        problem_statement: La problématique marketing à résoudre
+        company_context: Contexte spécifique de l'entreprise
+        config_manager: Gestionnaire de configuration des agents
+        pdf_paths: Chemins vers les fichiers PDF à utiliser comme sources de connaissances
+        selected_agents: Liste des agents à utiliser (par défaut tous sauf meta_manager)
+    
+    Returns:
+        Crew: Un crew CrewAI avec des tâches générées dynamiquement par le Meta Manager
+        
+    Example:
+        crew = build_crew_with_json_plan(
+            problem_statement="Créer une stratégie RSE pour lancer la gamme Lumeal",
+            company_context="Entreprise cosmétique française, valeurs éthiques",
+            selected_agents=["clara_detective_digitale", "julien_analyste_strategique", "sophie_plume_solidaire"]
+        )
+        result = crew.kickoff()
+    """
+    if config_manager is None:
+        config_manager = AgentConfigManager()
+    
+    task_manager = SequentialTaskManager(config_manager)
+    return task_manager.create_dynamic_crew_with_json_plan(
+        problem_statement, company_context, pdf_paths, selected_agents
+    )
 
 def build_ordered_crew_from_meta_result(meta_result: str, problem_statement: str, company_context: str = "", config_manager: AgentConfigManager = None, pdf_paths: List[str] = None, available_agents: List[str] = None):
     """Crée un crew avec les agents dans l'ordre recommandé par le Meta Manager"""
