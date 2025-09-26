@@ -1,0 +1,485 @@
+<!DOCTYPE html>
+<html lang="fr">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>CrewAI Marketing - Interface Web</title>
+        <link rel="stylesheet" href="static/css/style.css" />
+        <link
+            href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css"
+            rel="stylesheet"
+        />
+        <link
+            href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap"
+            rel="stylesheet"
+        />
+    </head>
+    <body>
+        <!-- Navigation -->
+        <nav class="navbar">
+            <div class="nav-container">
+                <div class="nav-brand">
+                    <i class="fas fa-robot"></i>
+                    <span>CrewAI Marketing</span>
+                </div>
+                <div class="nav-menu">
+                    <a
+                        href="#dashboard"
+                        class="nav-link active"
+                        data-page="dashboard"
+                    >
+                        <i class="fas fa-tachometer-alt"></i>
+                        Dashboard
+                    </a>
+                    <a href="#agents" class="nav-link" data-page="agents">
+                        <i class="fas fa-users"></i>
+                        Agents
+                    </a>
+                    <a href="#crews" class="nav-link" data-page="crews">
+                        <i class="fas fa-layer-group"></i>
+                        Crews
+                    </a>
+                    <a href="#campaigns" class="nav-link" data-page="campaigns">
+                        <i class="fas fa-bullhorn"></i>
+                        Campagnes
+                    </a>
+                    <a href="#files" class="nav-link" data-page="files">
+                        <i class="fas fa-file-pdf"></i>
+                        Fichiers
+                    </a>
+                </div>
+                <div class="nav-actions">
+                    <button class="btn btn-primary" id="newCampaignBtn">
+                        <i class="fas fa-plus"></i>
+                        Nouvelle Campagne
+                    </button>
+                </div>
+            </div>
+        </nav>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Dashboard Page -->
+            <div id="dashboard" class="page active">
+                <div class="page-header">
+                    <h1>Dashboard</h1>
+                    <p>Vue d'ensemble de votre plateforme CrewAI Marketing</p>
+                </div>
+
+                <!-- Stats Cards -->
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-icon">
+                            <i class="fas fa-users"></i>
+                        </div>
+                        <div class="stat-content">
+                            <h3 id="totalAgents">0</h3>
+                            <p>Agents</p>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon">
+                            <i class="fas fa-layer-group"></i>
+                        </div>
+                        <div class="stat-content">
+                            <h3 id="totalCrews">0</h3>
+                            <p>Crews</p>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon">
+                            <i class="fas fa-bullhorn"></i>
+                        </div>
+                        <div class="stat-content">
+                            <h3 id="totalCampaigns">0</h3>
+                            <p>Campagnes</p>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon">
+                            <i class="fas fa-check-circle"></i>
+                        </div>
+                        <div class="stat-content">
+                            <h3 id="completedCampaigns">0</h3>
+                            <p>Terminées</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Recent Campaigns -->
+                <div class="dashboard-section">
+                    <h2>Campagnes récentes</h2>
+                    <div class="campaigns-list" id="recentCampaigns">
+                        <!-- Les campagnes récentes seront chargées ici -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Agents Page -->
+            <div id="agents" class="page">
+                <div class="page-header">
+                    <h1>Gestion des Agents</h1>
+                    <button class="btn btn-primary" id="createAgentBtn">
+                        <i class="fas fa-plus"></i>
+                        Nouvel Agent
+                    </button>
+                </div>
+
+                <div class="agents-grid" id="agentsGrid">
+                    <!-- Les agents seront chargés ici -->
+                </div>
+            </div>
+
+            <!-- Crews Page -->
+            <div id="crews" class="page">
+                <div class="page-header">
+                    <h1>Gestion des Crews</h1>
+                    <button class="btn btn-primary" id="createCrewBtn">
+                        <i class="fas fa-plus"></i>
+                        Nouveau Crew
+                    </button>
+                </div>
+
+                <div class="crews-grid" id="crewsGrid">
+                    <!-- Les crews seront chargés ici -->
+                </div>
+            </div>
+
+            <!-- Campaigns Page -->
+            <div id="campaigns" class="page">
+                <div class="page-header">
+                    <h1>Campagnes Marketing</h1>
+                    <button class="btn btn-primary" id="createCampaignBtn">
+                        <i class="fas fa-plus"></i>
+                        Nouvelle Campagne
+                    </button>
+                </div>
+
+                <div class="campaigns-grid" id="campaignsGrid">
+                    <!-- Les campagnes seront chargées ici -->
+                </div>
+            </div>
+
+            <!-- Files Page -->
+            <div id="files" class="page">
+                <div class="page-header">
+                    <h1>Gestion des Fichiers</h1>
+                    <div class="file-upload-area" id="fileUploadArea">
+                        <i class="fas fa-cloud-upload-alt"></i>
+                        <p>Glissez-déposez vos fichiers PDF ici</p>
+                        <input
+                            type="file"
+                            id="fileInput"
+                            multiple
+                            accept=".pdf"
+                            style="display: none"
+                        />
+                    </div>
+                </div>
+
+                <div class="files-list" id="filesList">
+                    <!-- Les fichiers seront listés ici -->
+                </div>
+            </div>
+        </main>
+
+        <!-- Modals -->
+        <!-- Agent Modal -->
+        <div id="agentModal" class="modal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2 id="agentModalTitle">Nouvel Agent</h2>
+                    <span class="close">&times;</span>
+                </div>
+                <div class="modal-body">
+                    <form id="agentForm">
+                        <div class="form-group">
+                            <label for="agentName">Nom de l'agent</label>
+                            <input
+                                type="text"
+                                id="agentName"
+                                name="name"
+                                required
+                            />
+                        </div>
+                        <div class="form-group">
+                            <label for="agentRole">Rôle</label>
+                            <input
+                                type="text"
+                                id="agentRole"
+                                name="role"
+                                required
+                            />
+                        </div>
+                        <div class="form-group">
+                            <label for="agentGoal">Objectif</label>
+                            <textarea
+                                id="agentGoal"
+                                name="goal"
+                                rows="3"
+                                required
+                            ></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label for="agentBackstory">Backstory</label>
+                            <textarea
+                                id="agentBackstory"
+                                name="backstory"
+                                rows="3"
+                            ></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label for="agentMaxIter">Max Iterations</label>
+                            <input
+                                type="number"
+                                id="agentMaxIter"
+                                name="max_iter"
+                                min="1"
+                                max="10"
+                                value="3"
+                            />
+                        </div>
+                        <div class="form-group">
+                            <label>
+                                <input
+                                    type="checkbox"
+                                    id="agentVerbose"
+                                    name="verbose"
+                                    checked
+                                />
+                                Mode Verbose
+                            </label>
+                        </div>
+                        <div class="form-actions">
+                            <button
+                                type="button"
+                                class="btn btn-secondary"
+                                id="cancelAgent"
+                            >
+                                Annuler
+                            </button>
+                            <button type="submit" class="btn btn-primary">
+                                Sauvegarder
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- Crew Modal -->
+        <div id="crewModal" class="modal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2 id="crewModalTitle">Nouveau Crew</h2>
+                    <span class="close">&times;</span>
+                </div>
+                <div class="modal-body">
+                    <form id="crewForm">
+                        <div class="form-group">
+                            <label for="crewName">Nom du crew</label>
+                            <input
+                                type="text"
+                                id="crewName"
+                                name="name"
+                                required
+                            />
+                        </div>
+                        <div class="form-group">
+                            <label for="crewDescription">Description</label>
+                            <textarea
+                                id="crewDescription"
+                                name="description"
+                                rows="3"
+                            ></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label>Sélectionner les agents</label>
+                            <div id="crewAgentsList" class="agents-checkboxes">
+                                <!-- Les agents seront listés ici -->
+                            </div>
+                        </div>
+                        <div class="form-actions">
+                            <button
+                                type="button"
+                                class="btn btn-secondary"
+                                id="cancelCrew"
+                            >
+                                Annuler
+                            </button>
+                            <button type="submit" class="btn btn-primary">
+                                Sauvegarder
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- Campaign Modal -->
+        <div id="campaignModal" class="modal">
+            <div class="modal-content large">
+                <div class="modal-header">
+                    <h2 id="campaignModalTitle">Nouvelle Campagne</h2>
+                    <span class="close">&times;</span>
+                </div>
+                <div class="modal-body">
+                    <form id="campaignForm">
+                        <div class="form-group">
+                            <label for="campaignName">Nom de la campagne</label>
+                            <input
+                                type="text"
+                                id="campaignName"
+                                name="name"
+                                required
+                            />
+                        </div>
+                        <div class="form-group">
+                            <label for="campaignProblem"
+                                >Problématique marketing</label
+                            >
+                            <textarea
+                                id="campaignProblem"
+                                name="problem_statement"
+                                rows="4"
+                                required
+                                placeholder="Décrivez votre problématique marketing..."
+                            ></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label for="campaignContext"
+                                >Contexte de l'entreprise</label
+                            >
+                            <textarea
+                                id="campaignContext"
+                                name="company_context"
+                                rows="3"
+                                placeholder="Informations sur votre entreprise, secteur, valeurs..."
+                            ></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label for="campaignCrew">Crew à utiliser</label>
+                            <select id="campaignCrew" name="crew_id" required>
+                                <option value="">
+                                    Sélectionner un crew...
+                                </option>
+                            </select>
+                        </div>
+                        <div class="form-actions">
+                            <button
+                                type="button"
+                                class="btn btn-secondary"
+                                id="cancelCampaign"
+                            >
+                                Annuler
+                            </button>
+                            <button type="submit" class="btn btn-primary">
+                                Créer la Campagne
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- Campaign Execution Modal -->
+        <div id="executionModal" class="modal">
+            <div class="modal-content large">
+                <div class="modal-header">
+                    <h2>Exécuter la Campagne</h2>
+                    <span class="close">&times;</span>
+                </div>
+                <div class="modal-body">
+                    <form id="executionForm">
+                        <div class="form-group">
+                            <label for="openaiKey">Clé API OpenAI *</label>
+                            <input
+                                type="password"
+                                id="openaiKey"
+                                name="openai_api_key"
+                                required
+                                placeholder="sk-..."
+                            />
+                        </div>
+                        <div class="form-group">
+                            <label for="serperKey"
+                                >Clé API Serper (optionnel)</label
+                            >
+                            <input
+                                type="password"
+                                id="serperKey"
+                                name="serper_api_key"
+                                placeholder="Votre clé Serper..."
+                            />
+                        </div>
+                        <div class="form-group">
+                            <label for="openaiModel">Modèle OpenAI</label>
+                            <select id="openaiModel" name="openai_model">
+                                <option value="gpt-4o-mini">GPT-4o Mini</option>
+                                <option value="gpt-4o">GPT-4o</option>
+                                <option value="gpt-4-turbo">GPT-4 Turbo</option>
+                            </select>
+                        </div>
+                        <div
+                            class="execution-status"
+                            id="executionStatus"
+                            style="display: none"
+                        >
+                            <div class="status-message">
+                                <i class="fas fa-spinner fa-spin"></i>
+                                <span>Exécution en cours...</span>
+                            </div>
+                        </div>
+                        <div class="form-actions">
+                            <button
+                                type="button"
+                                class="btn btn-secondary"
+                                id="cancelExecution"
+                            >
+                                Annuler
+                            </button>
+                            <button
+                                type="submit"
+                                class="btn btn-primary"
+                                id="executeBtn"
+                            >
+                                Exécuter
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- Results Modal -->
+        <div id="resultsModal" class="modal">
+            <div class="modal-content extra-large">
+                <div class="modal-header">
+                    <h2>Résultats de la Campagne</h2>
+                    <span class="close">&times;</span>
+                </div>
+                <div class="modal-body">
+                    <div id="campaignResults">
+                        <!-- Les résultats seront affichés ici -->
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Loading Overlay -->
+        <div id="loadingOverlay" class="loading-overlay">
+            <div class="loading-spinner">
+                <i class="fas fa-spinner fa-spin"></i>
+                <p>Chargement...</p>
+            </div>
+        </div>
+
+        <!-- Toast Notifications -->
+        <div id="toastContainer" class="toast-container"></div>
+
+        <!-- Scripts -->
+        <script src="static/js/api.js"></script>
+        <script src="static/js/ui.js"></script>
+        <script src="static/js/app.js"></script>
+    </body>
+</html>
