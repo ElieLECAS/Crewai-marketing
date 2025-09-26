@@ -7,6 +7,14 @@ import json
 from .agents import create_agent_from_config
 from .agent_config import AgentConfigManager
 
+def estimate_tokens(text: str) -> int:
+    """Estime le nombre de tokens d'un texte (approximation: 1 token ≈ 4 caractères)"""
+    return len(text) // 4
+
+def check_token_limit(text: str, limit: int = 50000) -> bool:
+    """Vérifie si un texte respecte la limite de tokens"""
+    return estimate_tokens(text) <= limit
+
 
 class SequentialTaskManager:
     """Gestionnaire de tâches séquentielles avec transmission des résultats"""
@@ -82,7 +90,7 @@ class SequentialTaskManager:
         return recommended_order
     
     def create_meta_manager_task(self, problem_statement: str, company_context: str = "", available_agents: List[str] = None) -> Task:
-        """Crée la tâche principale du Meta Agent Manager"""
+        """Crée la tâche principale du Meta Agent Manager qui génère un plan JSON structuré"""
         meta_agent = create_agent_from_config("meta_manager_agent", self.config_manager)
         
         # Construire la liste des agents disponibles dynamiquement
@@ -102,12 +110,6 @@ class SequentialTaskManager:
             {chr(10).join([f"- {os.path.basename(pdf)}" for pdf in pdf_files])}
             
             Les agents avec les outils PDF peuvent utiliser ces documents pour enrichir leurs réponses.
-            
-            INSTRUCTIONS IMPORTANTES POUR LES AGENTS AVEC OUTILS PDF :
-            - Les agents doivent utiliser l'outil "pdf_search" avec UNE SEULE chaîne de caractères comme query
-            - Exemple correct : pdf_search("Gamme Lumeal")
-            - Exemple incorrect : pdf_search({{"query": "Gamme Lumeal", "pdf": "fichier.pdf"}})
-            - L'outil recherche automatiquement dans tous les PDFs disponibles
             """
         else:
             pdf_info = """
@@ -131,75 +133,107 @@ class SequentialTaskManager:
                 
                 tools_text = ", ".join(agent_tools) if agent_tools else "Aucun outil"
                 
-                agent_info = f"""- **{agent_config.name} ({agent_config.role})**
-  - **Objectif** : {agent_config.goal}
-  - **Backstory** : {agent_config.backstory}
-  - **Outils disponibles** : {tools_text}
-  - **Max Iterations** : {agent_config.max_iter}
-  - **Verbose** : {'Oui' if agent_config.verbose else 'Non'}"""
-                
-                agents_info.append(agent_info)
+                agents_info.append({
+                    "name": agent_name,
+                    "role": agent_config.role,
+                    "goal": agent_config.goal,
+                    "tools": agent_tools,
+                    "max_iter": agent_config.max_iter
+                })
         
-        agents_list = "\n\n            ".join(agents_info) if agents_info else "Aucun agent disponible"
+        agents_list = "\n".join([f"- {agent['name']} ({agent['role']}) - Outils: {', '.join(agent['tools']) if agent['tools'] else 'Aucun'}" for agent in agents_info])
+        
+        # Contexte entreprise simplifié (limité à 300 caractères)
+        company_context_short = company_context[:300] + "..." if len(company_context) > 300 else company_context
+        
+        # Problématique simplifiée (limité à 500 caractères)
+        problem_short = problem_statement[:500] + "..." if len(problem_statement) > 500 else problem_statement
+        
+        description = dedent(f"""
+        Tu es le Meta Agent Manager. Analyse cette problématique et crée un plan JSON.
+        
+        PROBLÉMATIQUE : {problem_short}
+        
+        CONTEXTE : {company_context_short if company_context else "Aucun contexte"}{pdf_info}
+        
+        AGENTS : {agents_list}
+        
+        MISSION :
+        1. Analyser la problématique et identifier les enjeux clés
+        2. Déterminer l'ordre optimal d'exécution des agents
+        3. Créer des tâches spécifiques pour chaque agent
+        4. Générer un plan JSON structuré
+        
+        FORMAT JSON OBLIGATOIRE :
+        {{
+            "execution_order": ["agent1", "agent2", "agent3"],
+            "problem_analysis": {{
+                "main_objective": "Objectif principal",
+                "key_challenges": ["Défi 1", "Défi 2"],
+                "target_audience": "Audience cible"
+            }},
+            "tasks": {{
+                "nom_agent_technique": {{
+                    "description": "Tâche spécifique pour cet agent",
+                    "expected_output": "Format du livrable attendu",
+                    "dependencies": ["agent_précédent"] ou [],
+                    "tools_to_use": ["outil1", "outil2"],
+                    "priority": 1
+                }}
+            }}
+        }}
+        
+        RÈGLES :
+        - Chaque tâche adaptée aux compétences de l'agent
+        - JSON valide et parsable
+        - Utilise les noms techniques des agents
+        - Chaque agent exécute UNIQUEMENT sa tâche assignée
+        
+        LIVRABLE : Plan JSON structuré et exécutable.
+        """).strip()
+        
+        # Vérifier la limite de tokens pour la tâche Meta Manager
+        if not check_token_limit(description, 15000):  # Limite pour le Meta Manager
+            print("⚠️ Tâche Meta Manager dépasse la limite de tokens, réduction supplémentaire...")
+            # Réduire encore plus si nécessaire
+            problem_short = problem_statement[:300] + "..."
+            company_context_short = company_context[:200] + "..." if company_context else ""
+            
+            description = dedent(f"""
+            Tu es le Meta Agent Manager. Crée un plan JSON.
+            
+            PROBLÉMATIQUE : {problem_short}
+            
+            CONTEXTE : {company_context_short if company_context else "Aucun contexte"}
+            
+            AGENTS : {agents_list}
+            
+            MISSION : Créer un plan JSON avec tâches pour chaque agent.
+            
+            FORMAT JSON :
+            {{
+                "execution_order": ["agent1", "agent2", "agent3"],
+                "tasks": {{
+                    "nom_agent": {{
+                        "description": "Tâche pour cet agent",
+                        "expected_output": "Livrable attendu",
+                        "priority": 1
+                    }}
+                }}
+            }}
+            
+            LIVRABLE : Plan JSON structuré.
+            """).strip()
         
         return Task(
-            description=dedent(f"""
-            Tu es le Meta Agent Manager. Tu reçois une problématique marketing et tu dois l'analyser pour créer des tâches spécifiques et les déléguer.
-            
-            PROBLÉMATIQUE REÇUE :
-            {problem_statement}
-            
-            CONTEXTE ENTREPRISE :
-            {company_context if company_context else "Aucun contexte spécifique fourni"}{pdf_info}
-            
-            MISSION IMPORTANTE :
-            1. **Analyser la problématique** : Comprendre les enjeux, objectifs et contraintes
-            2. **Évaluer les compétences** : Analyser les capacités, outils et spécialisations de chaque agent
-            3. **Déterminer l'ordre optimal** : Choisir l'ordre d'exécution selon la logique de la problématique et les compétences
-            4. **Créer des tâches spécifiques** : Générer des tâches concrètes adaptées aux capacités de chaque agent
-            5. **Déléguer intelligemment** : Assigner chaque tâche à l'agent le plus compétent avec les bons outils
-            6. **Structurer pour transmission** : Préparer les informations pour transmission via le système de context
-            
-            AGENTS DISPONIBLES DANS TON CREW :
-            {agents_list}
-            
-            FORMAT DE DÉLÉGATION REQUIS :
-            Tu dois créer un plan d'action structuré avec :
-            
-            ## ORDRE D'EXÉCUTION RECOMMANDÉ :
-            [Liste les agents dans l'ordre optimal d'exécution avec justification basée sur :
-            - Les compétences spécifiques de chaque agent
-            - Les outils disponibles pour chaque agent
-            - La logique de la problématique
-            - Les dépendances entre les tâches]
-            
-            ## TÂCHES PAR AGENT (dans l'ordre recommandé) :
-            [Pour chaque agent, crée une section avec :]
-            - **Agent assigné** : [Nom et rôle de l'agent]
-            - **Compétences utilisées** : [Quelles compétences spécifiques de l'agent seront utilisées]
-            - **Outils recommandés** : [Quels outils l'agent devrait utiliser]
-            - **Objectif** : [Objectif précis pour cet agent]
-            - **Instructions** : [Instructions détaillées adaptées aux capacités de l'agent]
-            - **Livrables** : [Format et contenu attendus]
-            - **Justification** : [Pourquoi cet agent est le plus approprié pour cette tâche]
-            - **Dépendances** : [Quels résultats des agents précédents sont nécessaires]
-            - **Ordre d'exécution** : [Position dans la séquence et pourquoi]
-            
-            IMPORTANT : 
-            - Chaque agent recevra le contexte de tous les agents précédents
-            - Utilise les compétences et outils spécifiques de chaque agent
-            - L'ordre que tu recommandes sera respecté
-            
-            LIVRABLE :
-            Plan d'action structuré avec l'ordre d'exécution recommandé et les tâches déléguées pour tous les agents de ton crew.
-            """).strip(),
+            description=description,
             agent=meta_agent,
-            expected_output="Plan d'action structuré avec l'ordre d'exécution choisi et les tâches déléguées pour tous les agents de ton crew.",
+            expected_output="Plan JSON structuré et valide pour créer les Task CrewAI dynamiquement.",
         )
     
-    def create_agent_task(self, agent_name: str, problem_statement: str, company_context: str = "") -> Task:
-        """Crée une tâche dynamique pour un agent spécifique"""
-        agent = create_agent_from_config(agent_name, self.config_manager)
+    def create_agent_task_from_plan(self, agent_name: str, task_info: dict, problem_statement: str, company_context: str = "", pdf_paths: List[str] = None) -> Task:
+        """Crée une tâche spécifique pour un agent basée sur le plan du Meta Manager"""
+        agent = create_agent_from_config(agent_name, self.config_manager, pdf_paths)
         agent_config = self.config_manager.get_agent_config(agent_name)
         
         if not agent_config:
@@ -231,35 +265,92 @@ class SequentialTaskManager:
             Tes outils PDF ne pourront pas être utilisés.
             """
         
+        # Construire la description enrichie avec les informations du plan
+        enriched_description = self._build_enriched_task_description(
+            task_info, problem_statement, company_context, pdf_context, agent_config
+        )
+        
         return Task(
-            description=dedent(f"""
+            description=enriched_description,
+            expected_output=task_info["expected_output"],
+            agent=agent
+        )
+    
+    def _build_enriched_task_description(self, task_info: dict, problem_statement: str, 
+                                        company_context: str, pdf_context: str, agent_config) -> str:
+        """Construit une description de tâche enrichie avec les informations du plan"""
+        
+        # Dépendances spécifiques (simplifiées)
+        dependencies_info = ""
+        if task_info.get("dependencies"):
+            dependencies_info = f"""
+            
+            DÉPENDANCES : Cette tâche dépend des résultats de : {', '.join(task_info['dependencies'])}
+            """
+        
+        # Outils recommandés (simplifiés)
+        tools_info = ""
+        if task_info.get("tools_to_use"):
+            tools_info = f"""
+            
+            OUTILS RECOMMANDÉS : {', '.join(task_info['tools_to_use'])}
+            """
+        
+        # Contexte entreprise simplifié (limité à 200 caractères)
+        company_context_short = company_context[:200] + "..." if len(company_context) > 200 else company_context
+        
+        # Problématique simplifiée (limité à 300 caractères)
+        problem_short = problem_statement[:300] + "..." if len(problem_statement) > 300 else problem_statement
+        
+        # Description de tâche simplifiée (limité à 500 caractères)
+        task_description = task_info['description'][:500] + "..." if len(task_info['description']) > 500 else task_info['description']
+        
+        # Expected output simplifié (limité à 200 caractères)
+        expected_output = task_info['expected_output'][:200] + "..." if len(task_info['expected_output']) > 200 else task_info['expected_output']
+        
+        description = dedent(f"""
+        Tu es {agent_config.name}, {agent_config.role}.
+        
+        TÂCHE : {task_description}
+        
+        PROBLÉMATIQUE : {problem_short}
+        
+        {f"CONTEXTE : {company_context_short}" if company_context else ""}
+        {pdf_context}
+        {dependencies_info}
+        {tools_info}
+        
+        INSTRUCTIONS :
+        - Exécute UNIQUEMENT cette tâche assignée
+        - Respecte le format de livrable demandé
+        - Utilise tes outils selon tes besoins
+        
+        LIVRABLE : {expected_output}
+        """).strip()
+        
+        # Vérifier la limite de tokens
+        if not check_token_limit(description, 10000):  # Limite plus stricte pour les tâches individuelles
+            print(f"⚠️ Tâche pour {agent_config.name} dépasse la limite de tokens, réduction supplémentaire...")
+            # Réduire encore plus si nécessaire
+            task_description = task_info['description'][:200] + "..."
+            problem_short = problem_statement[:150] + "..."
+            company_context_short = company_context[:100] + "..." if company_context else ""
+            
+            description = dedent(f"""
             Tu es {agent_config.name}, {agent_config.role}.
             
-            CONTEXTE :
-            Tu vas recevoir via le système de context les instructions du Meta Agent Manager qui a analysé cette problématique :
-            {problem_statement}
+            TÂCHE : {task_description}
             
-            {f"Contexte entreprise : {company_context}" if company_context else ""}{pdf_context}
+            PROBLÉMATIQUE : {problem_short}
             
-            MISSION :
-            1. **Récupère ta tâche** : Dans le context, trouve la section "## TÂCHE POUR {agent_config.name.upper()}"
-            2. **Comprends l'ordre** : Le Meta Manager a défini un ordre d'exécution optimal - respecte-le
-            3. **Utilise les dépendances** : Si des agents ont travaillé avant toi, utilise leurs résultats
-            4. **Exécute précisément** : Accomplis exactement l'objectif défini avec les instructions données
-            5. **Utilise tes outils** : Emploie tes outils selon tes besoins
-            6. **Respecte le format** : Livre le résultat selon le format demandé
+            {f"CONTEXTE : {company_context_short}" if company_context else ""}
             
-            IMPORTANT : 
-            - Exécute uniquement ce qui t'est demandé dans ta section du context
-            - Respecte l'ordre d'exécution défini par le Meta Manager
-            - Utilise les résultats des agents précédents si disponibles
+            INSTRUCTIONS : Exécute cette tâche selon tes compétences.
             
-            LIVRABLE :
-            Résultat conforme aux spécifications reçues via le context du Meta Manager.
-            """).strip(),
-            agent=agent,
-            expected_output="Résultat conforme aux spécifications reçues via le context du Meta Manager.",
-        )
+            LIVRABLE : {expected_output}
+            """).strip()
+        
+        return description
     
     
     def create_sequential_tasks(self, problem_statement: str, company_context: str = "", available_agents: List[str] = None) -> List[Task]:
@@ -301,24 +392,86 @@ class SequentialTaskManager:
         if available_agents is None:
             available_agents = [name for name in self.config_manager.get_all_agents().keys() if name != "meta_manager_agent"]
         
-        # Si on a le résultat du Meta Manager, déterminer l'ordre recommandé
+        # Si on a le résultat du Meta Manager, parser le plan JSON
         if meta_manager_result:
-            ordered_agents = self.parse_recommended_order(meta_manager_result, available_agents)
-        else:
-            ordered_agents = available_agents
-        
-        # Créer les tâches dans l'ordre recommandé
-        previous_tasks = []  # Les agents recevront le contexte des précédents
-        
+            try:
+                # Extraire le JSON du résultat
+                json_match = re.search(r'\{.*\}', meta_manager_result, re.DOTALL)
+                if json_match:
+                    plan = json.loads(json_match.group(0))
+                    ordered_agents = plan.get("execution_order", available_agents)
+                    
+                    # Créer les tâches selon le plan JSON SANS contexte pour éviter les limites de tokens
+                    for agent_name in ordered_agents:
+                        if agent_name in plan.get("tasks", {}):
+                            task_info = plan["tasks"][agent_name]
+                            
+                            # Créer la tâche spécifique SANS contexte pour éviter les limites de tokens
+                            agent_task = self.create_agent_task_from_plan(
+                                agent_name, task_info, problem_statement, company_context
+                            )
+                            # Ne pas ajouter de contexte pour éviter les limites de tokens
+                            agent_task.context = []
+                            tasks.append(agent_task)
+                else:
+                    # Fallback vers l'ancien système
+                    ordered_agents = self.parse_recommended_order(meta_manager_result, available_agents)
+                    for agent_name in ordered_agents:
+                        if self.config_manager.get_agent_config(agent_name):
+                            agent_task = self.create_agent_task(agent_name, problem_statement, company_context)
+                            # Ne pas ajouter de contexte pour éviter les limites de tokens
+                            agent_task.context = []
+                            tasks.append(agent_task)
+            except Exception as e:
+                print(f"⚠️ Erreur parsing plan Meta Manager: {e}")
+                # Fallback vers l'ancien système
+                ordered_agents = self.parse_recommended_order(meta_manager_result, available_agents)
         for agent_name in ordered_agents:
-            # Vérifier que l'agent existe
-            if self.config_manager.get_agent_config(agent_name):
-                agent_task = self.create_agent_task(agent_name, problem_statement, company_context)
-                agent_task.context = previous_tasks.copy()  # L'agent reçoit le contexte de tous les agents précédents
-                tasks.append(agent_task)
-                previous_tasks.append(agent_task)  # Ajouter cette tâche au contexte pour les suivantes
+                    if self.config_manager.get_agent_config(agent_name):
+                        agent_task = self.create_agent_task(agent_name, problem_statement, company_context)
+                        # Ne pas ajouter de contexte pour éviter les limites de tokens
+                        agent_task.context = []
+                        tasks.append(agent_task)
+        else:
+            # Pas de résultat Meta Manager, utiliser l'ordre par défaut
+            for agent_name in available_agents:
+                if self.config_manager.get_agent_config(agent_name):
+                    agent_task = self.create_agent_task(agent_name, problem_statement, company_context)
+                    # Ne pas ajouter de contexte pour éviter les limites de tokens
+                    agent_task.context = []
+                    tasks.append(agent_task)
         
         return tasks
+    
+    def create_agent_task(self, agent_name: str, problem_statement: str, company_context: str = "") -> Task:
+        """Crée une tâche générique pour un agent (méthode de fallback)"""
+        agent = create_agent_from_config(agent_name, self.config_manager)
+        agent_config = self.config_manager.get_agent_config(agent_name)
+        
+        if not agent_config:
+            raise ValueError(f"Configuration non trouvée pour l'agent: {agent_name}")
+        
+        # Contexte entreprise simplifié (limité à 100 caractères)
+        company_context_short = company_context[:100] + "..." if len(company_context) > 100 else company_context
+        
+        # Problématique simplifiée (limité à 200 caractères)
+        problem_short = problem_statement[:200] + "..." if len(problem_statement) > 200 else problem_statement
+        
+        return Task(
+            description=dedent(f"""
+            Tu es {agent_config.name}, {agent_config.role}.
+            
+            PROBLÉMATIQUE : {problem_short}
+            
+            {f"CONTEXTE : {company_context_short}" if company_context else ""}
+            
+            MISSION : Exécute ta tâche selon tes compétences.
+            
+            LIVRABLE : Résultat conforme à ton rôle.
+            """).strip(),
+            agent=agent,
+            expected_output="Résultat conforme au rôle de l'agent.",
+        )
     
     def create_meta_manager_with_json_plan(self, problem_statement: str, company_context: str = "", available_agents: List[str] = None) -> Task:
         """Crée la tâche du Meta Manager qui génère un plan JSON structuré"""
@@ -514,91 +667,23 @@ class SequentialTaskManager:
             print(f"⚠️ Agent {agent_name} non trouvé dans la configuration")
             return None
         
-        # Créer l'agent
         try:
-            agent = create_agent_from_config(agent_name, self.config_manager, pdf_paths)
+            # Utiliser la nouvelle méthode qui crée des tâches spécifiques
+            task = self.create_agent_task_from_plan(
+                agent_name, task_info, problem_statement, company_context, pdf_paths
+            )
+            
+            # Ajouter le contexte des tâches dépendantes
+            if context_tasks:
+                task.context = context_tasks.copy()
+            
+            print(f"✅ Tâche créée pour {agent_name} (priorité {task_info.get('priority', 'N/A')}, parallèle: {task_info.get('can_run_parallel', 'N/A')})")
+            return task
+            
         except Exception as e:
-            print(f"❌ Erreur création agent {agent_name}: {e}")
+            print(f"❌ Erreur création tâche pour {agent_name}: {e}")
             return None
-        
-        # Construire la description enrichie avec le contexte
-        enriched_description = self._build_enriched_task_description(
-            task_info, problem_statement, company_context, context_tasks
-        )
-        
-        # Créer la Task avec les informations du plan
-        task = Task(
-            description=enriched_description,
-            expected_output=task_info["expected_output"],
-            agent=agent,
-            context=context_tasks.copy()  # Contexte des tâches dépendantes
-        )
-        
-        print(f"✅ Tâche créée pour {agent_name} (priorité {task_info.get('priority', 'N/A')}, parallèle: {task_info.get('can_run_parallel', 'N/A')})")
-        return task
     
-    def _build_enriched_task_description(self, task_info: dict, problem_statement: str, 
-                                        company_context: str, previous_tasks: List[Task]) -> str:
-        """Construit une description de tâche enrichie avec le contexte"""
-        
-        # Contexte des tâches précédentes/dépendantes
-        context_info = ""
-        if previous_tasks:
-            context_info = f"""
-            
-            CONTEXTE DES TÂCHES DÉPENDANTES :
-            Tu as accès aux résultats des agents suivants via le système de contexte CrewAI :
-            {chr(10).join([f"- {i+1}. {task.agent.role}" for i, task in enumerate(previous_tasks)])}
-            
-            Utilise ces résultats pour enrichir ton travail et assurer la cohérence de l'ensemble.
-            """
-        
-        # Dépendances spécifiques
-        dependencies_info = ""
-        if task_info.get("dependencies"):
-            dependencies_info = f"""
-            
-            DÉPENDANCES SPÉCIFIQUES :
-            Cette tâche dépend des résultats de : {', '.join(task_info['dependencies'])}
-            Assure-toi de bien utiliser ces informations dans ton travail.
-            """
-        
-        # Outils recommandés
-        tools_info = ""
-        if task_info.get("tools_to_use"):
-            tools_info = f"""
-            
-            OUTILS RECOMMANDÉS PAR LE META MANAGER :
-            {', '.join(task_info['tools_to_use'])}
-            Utilise ces outils selon tes besoins pour accomplir ta mission optimalement.
-            """
-        
-        # Information sur l'exécution parallèle
-        parallel_info = ""
-        if task_info.get("can_run_parallel"):
-            parallel_info = f"""
-            
-            EXÉCUTION PARALLÈLE :
-            Cette tâche peut être exécutée en parallèle avec d'autres tâches.
-            Coordonne-toi efficacement avec les autres agents si nécessaire.
-            """
-        
-        return dedent(f"""
-        {task_info['description']}
-        
-        PROBLÉMATIQUE INITIALE :
-        {problem_statement}
-        
-        {f"CONTEXTE ENTREPRISE : {company_context}" if company_context else ""}
-        {context_info}
-        {dependencies_info}
-        {tools_info}
-        {parallel_info}
-        
-        CONTEXTE NÉCESSAIRE : {task_info.get('context_needed', 'Aucun contexte spécifique requis')}
-        DURÉE ESTIMÉE : {task_info.get('estimated_duration', 'Non spécifiée')}
-        PRIORITÉ : {task_info.get('priority', 'Non spécifiée')}
-        """).strip()
     
     def create_dynamic_crew_with_json_plan(self, problem_statement: str, company_context: str = "", 
                                           pdf_paths: List[str] = None, selected_agents: List[str] = None) -> Crew:

@@ -2,6 +2,7 @@ import os
 import streamlit as st
 import json
 import pandas as pd
+import re
 from dotenv import load_dotenv
 from rich.console import Console
 from src.crew import build_dynamic_marketing_crew, build_two_phase_marketing_crew, build_ordered_crew_from_meta_result
@@ -413,6 +414,359 @@ def display_generated_posts(result):
     # Afficher le résultat parsé
     display_parsed_result(result)
 
+def parse_agent_outputs_improved(result_str):
+    """Parse amélioré des outputs des agents avec détection intelligente"""
+    agent_sections = {}
+    current_agent = None
+    current_content = []
+    
+    lines = result_str.split('\n')
+    
+    for line in lines:
+        line = line.strip()
+        
+        # Détecter les sections d'agents avec des patterns plus robustes
+        agent_patterns = [
+            r'^#+\s*(meta\s+manager|meta\s+agent)',
+            r'^#+\s*(clara|détective\s+digitale)',
+            r'^#+\s*(julien|analyste\s+stratégique)',
+            r'^#+\s*(sophie|plume\s+solidaire)',
+            r'^#+\s*(agent|résultat).*:',
+            r'^##\s*(.*agent.*)',
+            r'^###\s*(.*agent.*)'
+        ]
+        
+        is_agent_section = False
+        for pattern in agent_patterns:
+            if re.search(pattern, line, re.IGNORECASE):
+                is_agent_section = True
+                break
+        
+        if is_agent_section:
+            # Sauvegarder le contenu précédent
+            if current_agent and current_content:
+                agent_sections[current_agent] = '\n'.join(current_content)
+            
+            # Nouvelle section d'agent
+            current_agent = line.replace('#', '').strip()
+            current_content = [line]
+        elif current_agent and line:
+            current_content.append(line)
+    
+    # Sauvegarder la dernière section
+    if current_agent and current_content:
+        agent_sections[current_agent] = '\n'.join(current_content)
+    
+    return agent_sections
+
+def detect_content_type(content):
+    """Détecte le type de contenu généré par l'agent"""
+    content_lower = content.lower()
+    
+    if 'linkedin' in content_lower and ('post' in content_lower or 'contenu' in content_lower):
+        return "Posts LinkedIn"
+    elif 'instagram' in content_lower and ('post' in content_lower or 'contenu' in content_lower):
+        return "Posts Instagram"
+    elif any(keyword in content_lower for keyword in ['plan', 'stratégie', 'recommandation', 'objectif']):
+        return "Plan stratégique"
+    elif any(keyword in content_lower for keyword in ['analyse', 'données', 'tendances', 'recherche']):
+        return "Analyse de données"
+    elif any(keyword in content_lower for keyword in ['rapport', 'étude', 'évaluation']):
+        return "Rapport d'analyse"
+    else:
+        return "Contenu général"
+
+def get_file_extension(content_type):
+    """Retourne l'extension de fichier appropriée selon le type de contenu"""
+    if content_type == "Posts LinkedIn":
+        return "md"
+    elif content_type == "Posts Instagram":
+        return "md"
+    elif content_type == "Plan stratégique":
+        return "md"
+    elif content_type == "Analyse de données":
+        return "txt"
+    else:
+        return "txt"
+
+def display_linkedin_posts(content):
+    """Affiche les posts LinkedIn de manière structurée"""
+    posts = extract_posts_from_text(content, 'linkedin')
+    
+    if posts:
+        for i, post in enumerate(posts, 1):
+            with st.expander(f"📝 Post LinkedIn {i}", expanded=True):
+                st.markdown(post)
+                
+                # Boutons d'action pour chaque post
+                col1, col2 = st.columns(2)
+                with col1:
+                    if st.button(f"📋 Copier Post {i}", key=f"copy_linkedin_post_{i}"):
+                        st.code(post, language="text")
+                        st.success("✅ Post affiché ci-dessus !")
+                with col2:
+                    if st.button(f"📥 Télécharger Post {i}", key=f"download_linkedin_post_{i}"):
+                        st.download_button(
+                            label=f"Télécharger Post {i}",
+                            data=post,
+                            file_name=f"post_linkedin_{i}.md",
+                            mime="text/plain"
+                        )
+    else:
+        st.markdown(content)
+
+def display_instagram_posts(content):
+    """Affiche les posts Instagram de manière structurée"""
+    posts = extract_posts_from_text(content, 'instagram')
+    
+    if posts:
+        for i, post in enumerate(posts, 1):
+            with st.expander(f"📸 Post Instagram {i}", expanded=True):
+                st.markdown(post)
+                
+                # Boutons d'action pour chaque post
+                col1, col2 = st.columns(2)
+                with col1:
+                    if st.button(f"📋 Copier Post {i}", key=f"copy_instagram_post_{i}"):
+                        st.code(post, language="text")
+                        st.success("✅ Post affiché ci-dessus !")
+                with col2:
+                    if st.button(f"📥 Télécharger Post {i}", key=f"download_instagram_post_{i}"):
+                        st.download_button(
+                            label=f"Télécharger Post {i}",
+                            data=post,
+                            file_name=f"post_instagram_{i}.md",
+                            mime="text/plain"
+                        )
+    else:
+        st.markdown(content)
+
+def display_strategic_plan(content):
+    """Affiche un plan stratégique de manière structurée"""
+    # Diviser le contenu en sections
+    sections = content.split('\n\n')
+    
+    for i, section in enumerate(sections):
+        if section.strip():
+            # Détecter les titres
+            if section.strip().startswith('#'):
+                st.markdown(section)
+            else:
+                # Afficher dans une boîte stylée
+                st.info(section)
+
+def display_data_analysis(content):
+    """Affiche une analyse de données de manière structurée"""
+    # Diviser le contenu en sections
+    sections = content.split('\n\n')
+    
+    for i, section in enumerate(sections):
+        if section.strip():
+            # Détecter les listes à puces
+            if section.strip().startswith('- '):
+                st.markdown(section)
+            else:
+                # Afficher dans une boîte stylée
+                st.success(section)
+
+def analyze_agent_output(agent_name, content):
+    """Analyse l'output d'un agent et affiche des insights"""
+    st.markdown(f"### 🔍 Analyse de l'output de {agent_name}")
+    
+    # Statistiques de base
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        word_count = len(content.split())
+        st.metric("Mots", word_count)
+    
+    with col2:
+        char_count = len(content)
+        st.metric("Caractères", char_count)
+    
+    with col3:
+        line_count = len(content.split('\n'))
+        st.metric("Lignes", line_count)
+    
+    with col4:
+        # Détecter les hashtags
+        hashtag_count = content.count('#')
+        st.metric("Hashtags", hashtag_count)
+    
+    # Analyse du contenu
+    st.markdown("#### 📊 Analyse du contenu")
+    
+    # Détecter les sections principales
+    sections = content.split('\n\n')
+    st.write(f"**Nombre de sections:** {len(sections)}")
+    
+    # Détecter les mots-clés fréquents
+    words = content.lower().split()
+    word_freq = {}
+    for word in words:
+        if len(word) > 3:  # Ignorer les mots courts
+            word_freq[word] = word_freq.get(word, 0) + 1
+    
+    # Top 10 des mots les plus fréquents
+    top_words = sorted(word_freq.items(), key=lambda x: x[1], reverse=True)[:10]
+    
+    if top_words:
+        st.write("**Mots-clés les plus fréquents:**")
+        for word, count in top_words:
+            st.write(f"- {word}: {count} fois")
+    
+    # Détecter les émotions/ton
+    positive_words = ['excellent', 'génial', 'fantastique', 'super', 'parfait', 'réussi']
+    negative_words = ['problème', 'difficile', 'compliqué', 'échec', 'raté']
+    
+    positive_count = sum(1 for word in positive_words if word in content.lower())
+    negative_count = sum(1 for word in negative_words if word in content.lower())
+    
+    if positive_count > negative_count:
+        st.success("😊 Ton globalement positif")
+    elif negative_count > positive_count:
+        st.warning("😟 Ton globalement négatif")
+    else:
+        st.info("😐 Ton neutre")
+
+def show_outputs_statistics():
+    """Affiche des statistiques détaillées sur les outputs sauvegardés"""
+    st.markdown("### 📊 Statistiques détaillées des outputs")
+    
+    if not st.session_state.agent_outputs:
+        st.warning("Aucun output sauvegardé")
+        return
+    
+    # Statistiques globales
+    total_agents = len(st.session_state.agent_outputs)
+    total_chars = sum(len(content) for content in st.session_state.agent_outputs.values())
+    total_words = sum(len(content.split()) for content in st.session_state.agent_outputs.values())
+    
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        st.metric("Agents", total_agents)
+    
+    with col2:
+        st.metric("Total caractères", f"{total_chars:,}")
+    
+    with col3:
+        st.metric("Total mots", f"{total_words:,}")
+    
+    with col4:
+        avg_words = total_words // total_agents if total_agents > 0 else 0
+        st.metric("Moyenne mots/agent", avg_words)
+    
+    # Analyse par type de contenu
+    st.markdown("#### 📈 Répartition par type de contenu")
+    content_types = {}
+    for agent_name, content in st.session_state.agent_outputs.items():
+        content_type = detect_content_type(content)
+        content_types[content_type] = content_types.get(content_type, 0) + 1
+    
+    for content_type, count in content_types.items():
+        percentage = (count / total_agents) * 100
+        st.write(f"**{content_type}:** {count} agent(s) ({percentage:.1f}%)")
+    
+    # Top 10 des mots les plus fréquents (tous agents confondus)
+    st.markdown("#### 🔤 Mots-clés les plus fréquents")
+    all_words = []
+    for content in st.session_state.agent_outputs.values():
+        words = content.lower().split()
+        all_words.extend(words)
+    
+    word_freq = {}
+    for word in all_words:
+        if len(word) > 3:  # Ignorer les mots courts
+            word_freq[word] = word_freq.get(word, 0) + 1
+    
+    top_words = sorted(word_freq.items(), key=lambda x: x[1], reverse=True)[:10]
+    
+    if top_words:
+        for i, (word, count) in enumerate(top_words, 1):
+            st.write(f"{i}. **{word}** - {count} fois")
+    else:
+        st.write("Aucun mot-clé détecté")
+    
+    # Analyse de la qualité
+    st.markdown("#### 🎯 Analyse de la qualité")
+    
+    # Détecter les outputs avec des hashtags
+    hashtag_outputs = sum(1 for content in st.session_state.agent_outputs.values() if '#' in content)
+    st.write(f"**Outputs avec hashtags:** {hashtag_outputs}/{total_agents}")
+    
+    # Détecter les outputs avec des listes
+    list_outputs = sum(1 for content in st.session_state.agent_outputs.values() if '- ' in content or '* ' in content)
+    st.write(f"**Outputs avec listes:** {list_outputs}/{total_agents}")
+    
+    # Détecter les outputs avec des titres
+    title_outputs = sum(1 for content in st.session_state.agent_outputs.values() if content.strip().startswith('#'))
+    st.write(f"**Outputs avec titres:** {title_outputs}/{total_agents}")
+    
+    # Recommandations
+    st.markdown("#### 💡 Recommandations")
+    
+    if hashtag_outputs < total_agents * 0.5:
+        st.info("💡 Considérez ajouter plus de hashtags pour améliorer la visibilité")
+    
+    if list_outputs < total_agents * 0.3:
+        st.info("💡 Utilisez plus de listes à puces pour structurer le contenu")
+    
+    if title_outputs < total_agents * 0.7:
+        st.info("💡 Ajoutez des titres pour mieux organiser le contenu")
+    
+    # Export des statistiques
+    st.markdown("#### 📤 Export des statistiques")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        if st.button("📊 Exporter statistiques", type="primary"):
+            stats_data = {
+                "total_agents": total_agents,
+                "total_characters": total_chars,
+                "total_words": total_words,
+                "average_words_per_agent": avg_words,
+                "content_types": content_types,
+                "top_words": top_words,
+                "quality_metrics": {
+                    "hashtag_outputs": hashtag_outputs,
+                    "list_outputs": list_outputs,
+                    "title_outputs": title_outputs
+                }
+            }
+            
+            st.download_button(
+                label="Télécharger statistiques JSON",
+                data=json.dumps(stats_data, indent=2, ensure_ascii=False),
+                file_name="outputs_statistics.json",
+                mime="application/json"
+            )
+    
+    with col2:
+        if st.button("📋 Copier statistiques", type="secondary"):
+            stats_text = f"""
+=== STATISTIQUES DES OUTPUTS ===
+
+Agents: {total_agents}
+Total caractères: {total_chars:,}
+Total mots: {total_words:,}
+Moyenne mots/agent: {avg_words}
+
+RÉPARTITION PAR TYPE:
+{chr(10).join([f"- {content_type}: {count} agent(s)" for content_type, count in content_types.items()])}
+
+TOP 10 MOTS-CLÉS:
+{chr(10).join([f"{i}. {word} - {count} fois" for i, (word, count) in enumerate(top_words, 1)])}
+
+MÉTRIQUES DE QUALITÉ:
+- Outputs avec hashtags: {hashtag_outputs}/{total_agents}
+- Outputs avec listes: {list_outputs}/{total_agents}
+- Outputs avec titres: {title_outputs}/{total_agents}
+            """
+            st.code(stats_text, language="text")
+            st.success("✅ Statistiques affichées ci-dessus !")
+
 # Navigation
 tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
     "🎯 Campagne", 
@@ -434,6 +788,16 @@ with tab1:
     2. **Créez vos crews** dans l'onglet "👥 Gestion Crews" en sélectionnant les agents souhaités
     3. **Lancez votre campagne** en sélectionnant le crew et en décrivant votre problématique
     4. **Le Meta Manager** analysera automatiquement votre problématique et créera/répartira les tâches aux agents
+    """)
+    
+    # Information sur les optimisations de tokens
+    st.success("""
+    **⚡ Optimisations de Performance :**
+    
+    - **Gestion des tokens** : Le système optimise automatiquement la taille des requêtes pour éviter les limites de tokens
+    - **Contexte simplifié** : Les descriptions sont raccourcies intelligemment pour respecter les limites des modèles
+    - **Pas de contexte entre agents** : Chaque agent travaille de manière indépendante pour éviter l'accumulation de tokens
+    - **Limites respectées** : Compatible avec gpt-4o-mini (200K tokens/minute) et autres modèles
     """)
     
     # Sélection du crew
@@ -1165,95 +1529,175 @@ with tab6:
         # Parser le résultat pour extraire les outputs par agent
         result_str = str(st.session_state.last_campaign_result)
         
-        # Diviser le résultat en sections par agent
-        agent_sections = {}
-        current_agent = None
-        current_content = []
+        # Diviser le résultat en sections par agent avec un parsing amélioré
+        agent_sections = parse_agent_outputs_improved(result_str)
         
-        lines = result_str.split('\n')
-        for line in lines:
-            line = line.strip()
-            
-            # Détecter les sections d'agents
-            if any(agent_name in line.lower() for agent_name in ['clara', 'julien', 'sophie', 'meta manager', 'meta agent']):
-                # Sauvegarder le contenu précédent
-                if current_agent and current_content:
-                    agent_sections[current_agent] = '\n'.join(current_content)
-                
-                # Nouvelle section d'agent
-                current_agent = line
-                current_content = [line]
-            elif current_agent and line:
-                current_content.append(line)
-        
-        # Sauvegarder la dernière section
-        if current_agent and current_content:
-            agent_sections[current_agent] = '\n'.join(current_content)
-        
-        # Afficher les outputs par agent
+        # Afficher les outputs par agent avec une interface améliorée
         if agent_sections:
             st.markdown("### 📋 Outputs par agent")
             
-            # Créer des onglets pour chaque agent
-            agent_tabs = st.tabs(list(agent_sections.keys()))
+            # Créer des onglets pour chaque agent avec des icônes
+            agent_tab_names = []
+            for agent_name in agent_sections.keys():
+                if 'meta' in agent_name.lower():
+                    agent_tab_names.append(f"🧠 {agent_name}")
+                elif 'clara' in agent_name.lower():
+                    agent_tab_names.append(f"🔍 {agent_name}")
+                elif 'julien' in agent_name.lower():
+                    agent_tab_names.append(f"📊 {agent_name}")
+                elif 'sophie' in agent_name.lower():
+                    agent_tab_names.append(f"✍️ {agent_name}")
+                else:
+                    agent_tab_names.append(f"🤖 {agent_name}")
+            
+            agent_tabs = st.tabs(agent_tab_names)
             
             for i, (agent_name, content) in enumerate(agent_sections.items()):
                 with agent_tabs[i]:
-                    st.markdown(f"#### 🤖 {agent_name}")
+                    # En-tête de l'agent avec informations
+                    col_header1, col_header2, col_header3 = st.columns([2, 1, 1])
                     
-                    # Afficher le contenu avec formatage
-                    st.markdown(content)
+                    with col_header1:
+                        st.markdown(f"#### {agent_tab_names[i]}")
+                        # Afficher le type de contenu détecté
+                        content_type = detect_content_type(content)
+                        st.caption(f"📄 Type de contenu: {content_type}")
                     
-                    # Boutons d'action pour cet agent
-                    col1, col2, col3 = st.columns(3)
+                    with col_header2:
+                        # Statistiques du contenu
+                        word_count = len(content.split())
+                        char_count = len(content)
+                        st.metric("Mots", word_count)
+                    
+                    with col_header3:
+                        st.metric("Caractères", char_count)
+                    
+                    # Affichage du contenu avec formatage amélioré
+                    st.markdown("---")
+                    
+                    # Afficher le contenu dans un conteneur stylé
+                    with st.container():
+                        if content_type == "Posts LinkedIn":
+                            display_linkedin_posts(content)
+                        elif content_type == "Posts Instagram":
+                            display_instagram_posts(content)
+                        elif content_type == "Plan stratégique":
+                            display_strategic_plan(content)
+                        elif content_type == "Analyse de données":
+                            display_data_analysis(content)
+                        else:
+                            # Affichage par défaut avec formatage Markdown
+                            st.markdown(content)
+                    
+                    # Boutons d'action améliorés
+                    st.markdown("---")
+                    col1, col2, col3, col4 = st.columns(4)
                     
                     with col1:
-                        if st.button(f"📋 Copier output {agent_name}", key=f"copy_{agent_name}"):
+                        if st.button(f"📋 Copier", key=f"copy_{agent_name}", type="secondary"):
                             st.code(content, language="text")
-                            st.success("Output affiché ci-dessus - vous pouvez le copier !")
+                            st.success("✅ Contenu affiché ci-dessus - vous pouvez le copier !")
                     
                     with col2:
-                        if st.button(f"📥 Télécharger {agent_name}", key=f"download_{agent_name}"):
+                        if st.button(f"📥 Télécharger", key=f"download_{agent_name}", type="secondary"):
+                            file_extension = get_file_extension(content_type)
                             st.download_button(
-                                label=f"Télécharger output {agent_name}",
+                                label=f"Télécharger {file_extension}",
                                 data=content,
-                                file_name=f"output_{agent_name.lower().replace(' ', '_')}.txt",
+                                file_name=f"output_{agent_name.lower().replace(' ', '_')}.{file_extension}",
                                 mime="text/plain"
                             )
                     
                     with col3:
-                        if st.button(f"💾 Sauvegarder {agent_name}", key=f"save_{agent_name}"):
+                        if st.button(f"💾 Sauvegarder", key=f"save_{agent_name}", type="primary"):
                             st.session_state.agent_outputs[agent_name] = content
-                            st.success(f"Output de {agent_name} sauvegardé !")
+                            st.success(f"✅ Output de {agent_name} sauvegardé !")
+                            st.rerun()
+                    
+                    with col4:
+                        if st.button(f"🔍 Analyser", key=f"analyze_{agent_name}", type="secondary"):
+                            analyze_agent_output(agent_name, content)
         
         # Section pour les outputs sauvegardés
         if st.session_state.agent_outputs:
             st.markdown("---")
             st.markdown("### 💾 Outputs sauvegardés")
             
+            # Afficher les outputs sauvegardés avec une interface améliorée
             for agent_name, content in st.session_state.agent_outputs.items():
-                with st.expander(f"🤖 {agent_name}", expanded=False):
-                    st.markdown(content)
+                # En-tête de l'agent sauvegardé
+                col_header1, col_header2, col_header3 = st.columns([2, 1, 1])
+                
+                with col_header1:
+                    st.markdown(f"#### 💾 {agent_name}")
+                    content_type = detect_content_type(content)
+                    st.caption(f"📄 Type: {content_type} | 💾 Sauvegardé")
+                
+                with col_header2:
+                    word_count = len(content.split())
+                    st.metric("Mots", word_count)
+                
+                with col_header3:
+                    char_count = len(content)
+                    st.metric("Caractères", char_count)
+                
+                # Afficher le contenu dans un conteneur stylé
+                with st.container():
+                    st.markdown("---")
+                    
+                    if content_type == "Posts LinkedIn":
+                        display_linkedin_posts(content)
+                    elif content_type == "Posts Instagram":
+                        display_instagram_posts(content)
+                    elif content_type == "Plan stratégique":
+                        display_strategic_plan(content)
+                    elif content_type == "Analyse de données":
+                        display_data_analysis(content)
+                    else:
+                        st.markdown(content)
                     
                     # Boutons d'action pour les outputs sauvegardés
-                    col1, col2 = st.columns(2)
+                    st.markdown("---")
+                    col1, col2, col3, col4 = st.columns(4)
                     
                     with col1:
-                        if st.button(f"📋 Copier {agent_name}", key=f"copy_saved_{agent_name}"):
+                        if st.button(f"📋 Copier", key=f"copy_saved_{agent_name}", type="secondary"):
                             st.code(content, language="text")
-                            st.success("Output affiché ci-dessus - vous pouvez le copier !")
+                            st.success("✅ Contenu affiché ci-dessus !")
                     
                     with col2:
-                        if st.button(f"🗑️ Supprimer {agent_name}", key=f"delete_saved_{agent_name}"):
+                        if st.button(f"📥 Télécharger", key=f"download_saved_{agent_name}", type="secondary"):
+                            file_extension = get_file_extension(content_type)
+                            st.download_button(
+                                label=f"Télécharger {file_extension}",
+                                data=content,
+                                file_name=f"saved_{agent_name.lower().replace(' ', '_')}.{file_extension}",
+                                mime="text/plain"
+                            )
+                    
+                    with col3:
+                        if st.button(f"🔍 Analyser", key=f"analyze_saved_{agent_name}", type="secondary"):
+                            analyze_agent_output(agent_name, content)
+                    
+                    with col4:
+                        if st.button(f"🗑️ Supprimer", key=f"delete_saved_{agent_name}", type="secondary"):
                             del st.session_state.agent_outputs[agent_name]
-                            st.success(f"Output de {agent_name} supprimé !")
+                            st.success(f"✅ Output de {agent_name} supprimé !")
                             st.rerun()
             
             # Bouton pour vider tous les outputs sauvegardés
-            if st.button("🗑️ Vider tous les outputs sauvegardés", type="secondary"):
-                st.session_state.agent_outputs = {}
-                st.success("Tous les outputs sauvegardés ont été supprimés !")
-                st.rerun()
+            st.markdown("---")
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                if st.button("🗑️ Vider tous les outputs sauvegardés", type="secondary"):
+                    st.session_state.agent_outputs = {}
+                    st.success("✅ Tous les outputs sauvegardés ont été supprimés !")
+                    st.rerun()
+            
+            with col2:
+                if st.button("📊 Statistiques des outputs", type="secondary"):
+                    show_outputs_statistics()
     
     else:
         st.info("💡 Aucune campagne exécutée récemment. Lancez une campagne dans l'onglet '🎯 Campagne' pour voir les outputs des agents.")
